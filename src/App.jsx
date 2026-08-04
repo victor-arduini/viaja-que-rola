@@ -245,9 +245,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
   const updateSlice = (key) => (updater) =>
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
 
-  if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
-
-  const accounts = db.accounts, emissions = db.emissions;
+  const accounts = db?.accounts || [], emissions = db?.emissions || [];
   const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions");
 
   const emissionsCalc = useMemo(() => emissions.map((em) => {
@@ -260,9 +258,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
     return { ...em, conta, custoMilhas, custoTotal, economia, pct };
   }).sort((a, b) => (b.data || "").localeCompare(a.data || "")), [emissions, accounts]);
 
-  const reservasCalc = useMemo(() => (db.reservas || []).map((r) => ({
+  const reservasCalc = useMemo(() => (db?.reservas || []).map((r) => ({
     ...r, economia: Number(r.valorMercado || 0) - Number(r.valorPago || 0),
-  })), [db.reservas]);
+  })), [db]);
 
   const totals = useMemo(() => {
     const totalMilhas = accounts.reduce((s, a) => s + Number(a.saldo || 0), 0);
@@ -275,15 +273,6 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
     return { totalMilhas, patrimonio, economiaEmissoes, economiaReservas, programasAtivos, porPrograma, vencendo };
   }, [accounts, emissionsCalc, reservasCalc]);
 
-  const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
-  const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
-  const addEmission = (data) => setEmissions((prev) => [...prev, { id: uid(), ...data }]);
-  const removeEmission = (id) => setEmissions((prev) => prev.filter((e) => e.id !== id));
-
-  const navItems = isAdmin ? [...NAV, { key: "admin", label: "Administração", icon: UserCog }] : NAV;
-  const activeModule = MODULES.find((m) => m.key === tab);
-  const currentLabel = navItems.find((n) => n.key === tab)?.label || "Dashboard";
-
   const cpfGroups = useMemo(() => {
     const map = {};
     accounts.forEach((a) => {
@@ -293,6 +282,17 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
     });
     return Object.values(map);
   }, [accounts]);
+
+  const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
+  const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
+  const addEmission = (data) => setEmissions((prev) => [...prev, { id: uid(), ...data }]);
+  const removeEmission = (id) => setEmissions((prev) => prev.filter((e) => e.id !== id));
+
+  const navItems = isAdmin ? [...NAV, { key: "admin", label: "Administração", icon: UserCog }] : NAV;
+  const activeModule = MODULES.find((m) => m.key === tab);
+  const currentLabel = navItems.find((n) => n.key === tab)?.label || "Dashboard";
+
+  if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
 
   return (
     <div className="mk-root">
