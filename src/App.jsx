@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { supabase } from "./supabaseClient";
 import {
   Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
