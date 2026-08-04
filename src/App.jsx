@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient";
 import {
   Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
-  Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck, Pencil
+  Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck, Pencil, UserCog
 } from "lucide-react";
 
 const PROGRAMAS = ["Smiles", "LATAM Pass", "TudoAzul", "Livelo", "Esfera", "Outro"];
@@ -213,7 +213,7 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
 }
 
 // ---------- Main app ----------
-function PainelMilhas({ userId, userEmail, onSignOut }) {
+function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
   const [tab, setTab] = useState("dashboard");
   const [db, setDb] = useState(null);
   const [showCpf, setShowCpf] = useState({});
@@ -280,8 +280,9 @@ function PainelMilhas({ userId, userEmail, onSignOut }) {
   const addEmission = (data) => setEmissions((prev) => [...prev, { id: uid(), ...data }]);
   const removeEmission = (id) => setEmissions((prev) => prev.filter((e) => e.id !== id));
 
+  const navItems = isAdmin ? [...NAV, { key: "admin", label: "Administração", icon: UserCog }] : NAV;
   const activeModule = MODULES.find((m) => m.key === tab);
-  const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
+  const currentLabel = navItems.find((n) => n.key === tab)?.label || "Dashboard";
 
   const cpfGroups = useMemo(() => {
     const map = {};
@@ -389,7 +390,7 @@ function PainelMilhas({ userId, userEmail, onSignOut }) {
             </div>
           </div>
           <div className="mk-navlist">
-            {NAV.map((n) => {
+            {navItems.map((n) => {
               const Icon = n.icon;
               return (
                 <button key={n.key} className={`mk-navitem ${tab === n.key ? "active" : ""}`} onClick={() => setTab(n.key)}>
@@ -572,6 +573,8 @@ function PainelMilhas({ userId, userEmail, onSignOut }) {
             </>
           )}
 
+          {tab === "admin" && isAdmin && <AdminPanel />}
+
           {activeModule && (
             <DataModule schema={activeModule} data={db[activeModule.key] || []} setData={updateSlice(activeModule.key)} allData={db} />
           )}
@@ -644,6 +647,87 @@ function EmissionFormModal({ accounts, onClose, onSave }) {
   );
 }
 
+// ---------- Painel do administrador (visualiza contas de todos os usuários) ----------
+function AdminPanel() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(null);
+  const [selectedData, setSelectedData] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(false);
+
+  useEffect(() => {
+    supabase.from("profiles").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+      if (error) console.error(error);
+      setUsers(data || []);
+      setLoading(false);
+    });
+  }, []);
+
+  const openUser = async (id) => {
+    setSelectedId(id);
+    setLoadingUser(true);
+    const { data, error } = await supabase.from("app_data").select("data").eq("user_id", id).maybeSingle();
+    if (error) console.error(error);
+    setSelectedData(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
+    setLoadingUser(false);
+  };
+
+  const selectedUser = users.find((u) => u.id === selectedId);
+
+  return (
+    <>
+      <div className="mk-section-title"><h2>Administração — todos os usuários</h2></div>
+      {loading ? (
+        <div className="mk-empty">Carregando usuários…</div>
+      ) : users.length === 0 ? (
+        <div className="mk-empty">Nenhum usuário cadastrado ainda.</div>
+      ) : (
+        <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
+          <table className="mk-table">
+            <thead><tr><th>E-mail</th><th>Cadastro</th><th></th></tr></thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} style={{ background: selectedId === u.id ? "rgba(94,208,255,0.06)" : "transparent" }}>
+                  <td>{u.email}{u.is_admin && <span className="mk-badge" style={{ marginLeft: 8 }}>admin</span>}</td>
+                  <td>{new Date(u.created_at).toLocaleDateString("pt-BR")}</td>
+                  <td><button className="mk-btn" style={{ padding: "6px 12px" }} onClick={() => openUser(u.id)}>Ver contas</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selectedId && (
+        <>
+          <div className="mk-section-title"><h2>Contas de milhas — {selectedUser?.email}</h2></div>
+          {loadingUser ? (
+            <div className="mk-empty">Carregando…</div>
+          ) : !selectedData || selectedData.accounts.length === 0 ? (
+            <div className="mk-empty">Esse usuário ainda não cadastrou contas.</div>
+          ) : (
+            <div className="mk-card-list">
+              {selectedData.accounts.map((a) => (
+                <div className="mk-ticket" key={a.id}>
+                  <div className="mk-ticket-main">
+                    <div className="mk-ticket-row"><span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span></span></div>
+                    <div className="mk-field">CPF: <b>{maskCpf(a.cpf)}</b></div>
+                    <div className="mk-field">Custo médio: <b>{formatBRL(a.cpm)} / milheiro</b></div>
+                  </div>
+                  <div className="mk-ticket-side">
+                    <div><div className="mk-field" style={{ textAlign: "right" }}>Saldo</div><div className="mk-mono" style={{ fontSize: 18, fontWeight: 700 }}>{Number(a.saldo).toLocaleString("pt-BR")}</div></div>
+                    <div className="mk-field">Validade: {formatDate(a.validade)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 // ---------- Auth gate ----------
 function LoginScreen() {
   const [mode, setMode] = useState("signin"); // signin | signup
@@ -695,12 +779,20 @@ function LoginScreen() {
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) { setIsAdmin(false); return; }
+    supabase.from("profiles").select("is_admin").eq("id", session.user.id).maybeSingle().then(({ data }) => {
+      setIsAdmin(!!data?.is_admin);
+    });
+  }, [session]);
 
   if (session === undefined) {
     return <div style={{ background: "#050912", minHeight: "100vh", color: "#8CA2C9", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>Carregando…</div>;
@@ -709,6 +801,7 @@ export default function App() {
 
   return (
     <PainelMilhas
+      isAdmin={isAdmin}
       userId={session.user.id}
       userEmail={session.user.email}
       onSignOut={() => supabase.auth.signOut()}
