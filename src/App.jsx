@@ -3,23 +3,29 @@ import { supabase } from "./supabaseClient";
 import {
   Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
-  Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck, Pencil, UserCog
+  Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
+  Pencil, ChevronDown, ArrowLeft, KeyRound
 } from "lucide-react";
 
-const PROGRAMAS = ["Smiles", "LATAM Pass", "TudoAzul", "Livelo", "Esfera", "Outro"];
+const PROGRAMAS = ["Smiles", "LATAM Pass", "Azul", "Livelo", "Esfera", "Iberia", "Accor", "Outro"];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const onlyDigits = (s) => (s || "").replace(/\D/g, "");
 const formatBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const formatDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
-const maskCpf = (cpf) => { if (!cpf) return "—"; const d = cpf.replace(/\D/g, ""); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
+const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
 
-// ---------- Config-driven modules (sidebar items reproduced generically) ----------
+const PROGRAM_COLORS = {
+  smiles: "#FF7A00", "latam pass": "#7B2D8E", latam: "#7B2D8E", tudoazul: "#0039A6", azul: "#0039A6",
+  livelo: "#E4007C", esfera: "#6B7280", accor: "#151515", iberia: "#C6007E",
+};
+function colorForPrograma(nome) {
+  const key = (nome || "").toLowerCase();
+  for (const k in PROGRAM_COLORS) if (key.includes(k)) return PROGRAM_COLORS[k];
+  return "#2E6FF2";
+}
+
+// ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
 const MODULES = [
-  { key: "clientes", label: "Contas Gerenciadas", icon: Users, fields: [
-      { key: "nome", label: "Nome", type: "text" },
-      { key: "cpf", label: "CPF", type: "text" },
-      { key: "telefone", label: "Telefone", type: "text" },
-      { key: "email", label: "E-mail", type: "text" },
-  ]},
   { key: "programas", label: "Programas", icon: Layers, fields: [
       { key: "nome", label: "Nome", type: "text" },
       { key: "tipo", label: "Tipo", type: "select", options: ["Aéreo", "Hotel", "Cartão", "Bancário"] },
@@ -88,7 +94,6 @@ const MODULES = [
 
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "clientes", label: "Contas Gerenciadas", icon: Users },
   { key: "programas", label: "Programas", icon: Layers },
   { key: "contas", label: "Contas", icon: Wallet },
   { key: "emissoes", label: "Emissões", icon: PlaneTakeoff },
@@ -104,7 +109,96 @@ const NAV = [
   { key: "cpfs", label: "Controle de CPFs", icon: ShieldCheck },
 ];
 
-const EMPTY_DB = { accounts: [], emissions: [], clientes: [], programas: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+const EMPTY_DB = { accounts: [], emissions: [], programas: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+
+// ---------- CSS compartilhado entre o painel do cliente e o do admin ----------
+const APP_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  .mk-root {
+    --bg: #050912; --bg-2: #0B1A3D; --card: #0F2049; --card-2: #16305E;
+    --accent: #2E6FF2; --accent-2: #5ED0FF; --green: #34C495; --red: #FF6B6B;
+    --ink: #EAF1FF; --muted: #8CA2C9;
+    color-scheme: dark;
+    font-family: 'Space Grotesk', sans-serif;
+    background: radial-gradient(circle at 15% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
+    color: var(--ink); min-height: 100%; box-sizing: border-box; border-radius: 16px; overflow: hidden;
+  }
+  .mk-root * { box-sizing: border-box; }
+  .mk-mono { font-family: 'IBM Plex Mono', monospace; }
+  .mk-display { font-family: 'Sora', sans-serif; font-weight: 800; letter-spacing: -0.3px; }
+  .mk-app { display: flex; align-items: stretch; min-height: 100%; }
+  .mk-sidebar { width: 224px; flex-shrink: 0; background: rgba(3,7,16,0.55); border-right: 1px solid rgba(94,208,255,0.1); padding: 20px 12px; display: flex; flex-direction: column; }
+  .mk-sidebar-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; padding: 0 6px; }
+  .mk-logo-badge { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); transform: rotate(-6deg); flex-shrink: 0; }
+  .mk-logo-badge svg { transform: rotate(6deg); color: #fff; }
+  .mk-sidebar-brand .name { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 15px; line-height: 1.1; background: linear-gradient(90deg, var(--ink), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .mk-sidebar-brand .sub { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent-2); font-weight: 600; }
+  .mk-navlist { display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 140px); overflow-y: auto; flex: 1; }
+  .mk-navitem { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; color: var(--muted); cursor: pointer; background: none; border: none; text-align: left; width: 100%; font-family: 'Space Grotesk', sans-serif; }
+  .mk-navitem:hover { color: var(--ink); background: rgba(234,241,255,0.05); }
+  .mk-navitem.active { background: linear-gradient(90deg, rgba(46,111,242,0.28), rgba(94,208,255,0.06)); color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 var(--accent-2); }
+  .mk-navitem svg { flex-shrink: 0; }
+  .mk-main { flex: 1; min-width: 0; padding: 22px 26px 50px; overflow-x: hidden; }
+  .mk-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .mk-topbar h2 { margin: 0; font-family: 'Sora', sans-serif; font-size: 21px; font-weight: 700; }
+  .mk-userpill { display: flex; align-items: center; gap: 8px; background: rgba(234,241,255,0.06); border: 1px solid rgba(234,241,255,0.14); padding: 7px 12px; border-radius: 999px; font-size: 12.5px; color: var(--ink); font-family: 'Space Grotesk', sans-serif; }
+  .mk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .mk-stub { background: var(--card); color: var(--ink); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; padding: 16px 16px 14px; position: relative; overflow: hidden; }
+  .mk-stub::after { content: ""; position: absolute; left: 0; right: 0; bottom: 38px; border-bottom: 1.5px dashed rgba(234,241,255,0.14); }
+  .mk-stub-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .mk-stub-value { font-size: 22px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+  .mk-stub-foot { margin-top: 12px; font-size: 10.5px; color: var(--muted); }
+  .mk-section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .mk-section-title h2 { font-size: 17px; margin: 0; font-family: 'Sora', sans-serif; font-weight: 700; }
+  .mk-btn { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; border: none; padding: 9px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 6px 16px rgba(46,111,242,0.35); }
+  .mk-btn:hover { filter: brightness(1.08); }
+  .mk-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+  .mk-card-list { display: flex; flex-direction: column; gap: 12px; }
+  .mk-ticket { background: var(--card); color: var(--ink); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; display: grid; grid-template-columns: 1fr auto; overflow: hidden; }
+  .mk-ticket-main { padding: 14px 16px; }
+  .mk-ticket-side { background: var(--card-2); border-left: 1.5px dashed rgba(234,241,255,0.14); padding: 14px 14px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 130px; }
+  .mk-ticket-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .mk-ticket-title { font-weight: 700; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+  .mk-badge { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; font-size: 10px; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  .mk-field { font-size: 12px; color: var(--muted); }
+  .mk-field b { color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+  .mk-iconbtn { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; }
+  .mk-iconbtn:hover { color: var(--red); }
+  .mk-eyebtn { background: none; border: none; cursor: pointer; color: var(--muted); display: inline-flex; }
+  .mk-empty { background: rgba(234,241,255,0.04); border: 1px dashed rgba(234,241,255,0.2); border-radius: 10px; padding: 30px; text-align: center; color: var(--muted); font-size: 13.5px; }
+  .mk-table-wrap { background: var(--card); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; overflow-x: auto; }
+  .mk-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 480px; }
+  .mk-table th { text-align: left; padding: 10px 14px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(234,241,255,0.1); white-space: nowrap; }
+  .mk-table td { padding: 10px 14px; border-bottom: 1px solid rgba(234,241,255,0.06); white-space: nowrap; }
+  .mk-table tr:last-child td { border-bottom: none; }
+  .mk-table td:last-child { text-align: right; }
+  .mk-modal-backdrop { position: fixed; inset: 0; background: rgba(5,9,18,0.75); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+  .mk-modal { background: var(--card); color: var(--ink); border-radius: 12px; border: 1px solid rgba(94,208,255,0.18); padding: 22px; width: 100%; max-width: 440px; max-height: 86vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .mk-modal h3 { font-family: 'Sora', sans-serif; font-weight: 700; margin: 0 0 14px; font-size: 17px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .mk-form-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
+  .mk-form-row label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .mk-form-row input, .mk-form-row select, .mk-form-row textarea { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: var(--ink); }
+  .mk-form-row input:disabled { opacity: 0.5; }
+  .mk-form-row input::placeholder { color: rgba(234,241,255,0.35); }
+  .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mk-preview { background: var(--card-2); border: 1px solid rgba(94,208,255,0.16); border-radius: 8px; padding: 12px 14px; margin-top: 6px; font-size: 13px; }
+  .mk-preview .economia { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 16px; }
+  .mk-alert-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(234,241,255,0.08); font-size: 13px; }
+  .mk-alert-row:last-child { border-bottom: none; }
+  .mk-signout-wrap { margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(234,241,255,0.14); }
+  .mk-programa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .mk-programa-card { background: var(--card); border: 1px solid rgba(94,208,255,0.14); border-radius: 12px; padding: 16px; }
+  .mk-programa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .mk-programa-name { font-weight: 700; font-size: 14px; }
+  .mk-programa-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .mk-progress-track { height: 5px; background: rgba(234,241,255,0.1); border-radius: 4px; margin-top: 6px; overflow: hidden; }
+  .mk-progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 4px; }
+  .mk-switcher { position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border: 1px solid rgba(94,208,255,0.18); border-radius: 10px; min-width: 230px; max-height: 320px; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.5); z-index: 40; padding: 6px; }
+  .mk-switcher-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 8px 10px 4px; }
+  .mk-switcher-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--ink); font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
+  .mk-switcher-item:hover { background: rgba(234,241,255,0.06); }
+  .mk-impersonate-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: linear-gradient(90deg, rgba(46,111,242,0.18), rgba(94,208,255,0.06)); border: 1px solid rgba(94,208,255,0.25); border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 13px; }
+`;
 
 function renderCell(field, row, allData) {
   const v = row[field.key];
@@ -212,8 +306,8 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
   );
 }
 
-// ---------- Main app ----------
-function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
+// ---------- Painel do cliente (usado tanto pelo cliente logado quanto pelo admin em "ver como") ----------
+function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [tab, setTab] = useState("dashboard");
   const [db, setDb] = useState(null);
   const [showCpf, setShowCpf] = useState({});
@@ -222,11 +316,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from("app_data")
-        .select("data")
-        .eq("user_id", userId)
-        .maybeSingle();
+      const { data, error } = await supabase.from("app_data").select("data").eq("user_id", userId).maybeSingle();
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
@@ -238,7 +328,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
       supabase.from("app_data").upsert({ user_id: userId, data: db, updated_at: new Date().toISOString() }).then(({ error }) => {
         if (error) console.error(error);
       });
-    }, 500); // debounce: evita gravar a cada tecla digitada
+    }, 500);
     return () => clearTimeout(timeout);
   }, [db, userId]);
 
@@ -267,11 +357,31 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
     const patrimonio = accounts.reduce((s, a) => s + (Number(a.saldo || 0) / 1000) * Number(a.cpm || 0), 0);
     const economiaEmissoes = emissionsCalc.reduce((s, e) => s + e.economia, 0);
     const economiaReservas = reservasCalc.reduce((s, r) => s + r.economia, 0);
-    const programasAtivos = new Set(accounts.map((a) => a.programa)).size;
-    const porPrograma = PROGRAMAS.map((p) => ({ programa: p, saldo: accounts.filter((a) => a.programa === p).reduce((s, a) => s + Number(a.saldo || 0), 0) })).filter((p) => p.saldo > 0);
     const vencendo = accounts.filter((a) => a.validade).map((a) => ({ ...a, dias: Math.ceil((new Date(a.validade) - new Date()) / 86400000) })).filter((a) => a.dias <= 60).sort((a, b) => a.dias - b.dias);
-    return { totalMilhas, patrimonio, economiaEmissoes, economiaReservas, programasAtivos, porPrograma, vencendo };
+    return { totalMilhas, patrimonio, economiaEmissoes, economiaReservas, vencendo };
   }, [accounts, emissionsCalc, reservasCalc]);
+
+  // Cards de programa, agrupando as contas por programa (estilo "Visão Geral das Contas")
+  const porProgramaCards = useMemo(() => {
+    const map = {};
+    accounts.forEach((a) => {
+      const key = a.programa || "Outro";
+      if (!map[key]) map[key] = { programa: key, saldo: 0, cpmSum: 0, cpmCount: 0, cpfs: new Set() };
+      map[key].saldo += Number(a.saldo || 0);
+      map[key].cpmSum += Number(a.cpm || 0);
+      map[key].cpmCount += 1;
+      map[key].cpfs.add(a.cpf);
+    });
+    return Object.values(map).map((p) => {
+      const progRecord = (db?.programas || []).find((pr) => (pr.nome || "").toLowerCase() === p.programa.toLowerCase());
+      return {
+        ...p,
+        cpmAvg: p.cpmCount ? p.cpmSum / p.cpmCount : 0,
+        cpfCount: p.cpfs.size,
+        limiteCpfs: progRecord?.limiteCpfs ? Number(progRecord.limiteCpfs) : null,
+      };
+    }).sort((a, b) => b.saldo - a.saldo);
+  }, [accounts, db]);
 
   const cpfGroups = useMemo(() => {
     const map = {};
@@ -288,109 +398,22 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
   const addEmission = (data) => setEmissions((prev) => [...prev, { id: uid(), ...data }]);
   const removeEmission = (id) => setEmissions((prev) => prev.filter((e) => e.id !== id));
 
-  const navItems = isAdmin ? [...NAV, { key: "admin", label: "Administração", icon: UserCog }] : NAV;
   const activeModule = MODULES.find((m) => m.key === tab);
-  const currentLabel = navItems.find((n) => n.key === tab)?.label || "Dashboard";
+  const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
 
   if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
 
   return (
     <div className="mk-root">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-        .mk-root {
-          --bg: #050912; --bg-2: #0B1A3D; --card: #0F2049; --card-2: #16305E;
-          --accent: #2E6FF2; --accent-2: #5ED0FF; --green: #34C495; --red: #FF6B6B;
-          --ink: #EAF1FF; --muted: #8CA2C9;
-          color-scheme: dark;
-          font-family: 'Space Grotesk', sans-serif;
-          background: radial-gradient(circle at 15% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
-          color: var(--ink); min-height: 100%; box-sizing: border-box; border-radius: 16px; overflow: hidden;
-        }
-        .mk-root * { box-sizing: border-box; }
-        .mk-mono { font-family: 'IBM Plex Mono', monospace; }
-        .mk-display { font-family: 'Sora', sans-serif; font-weight: 800; letter-spacing: -0.3px; }
-
-        .mk-app { display: flex; align-items: stretch; min-height: 100%; }
-        .mk-sidebar { width: 224px; flex-shrink: 0; background: rgba(3,7,16,0.55); border-right: 1px solid rgba(94,208,255,0.1); padding: 20px 12px; }
-        .mk-sidebar-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; padding: 0 6px; }
-        .mk-logo-badge { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); transform: rotate(-6deg); flex-shrink: 0; }
-        .mk-logo-badge svg { transform: rotate(6deg); color: #fff; }
-        .mk-sidebar-brand .name { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 15px; line-height: 1.1; background: linear-gradient(90deg, var(--ink), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-        .mk-sidebar-brand .sub { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent-2); font-weight: 600; }
-        .mk-navlist { display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 140px); overflow-y: auto; }
-        .mk-navitem { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; color: var(--muted); cursor: pointer; background: none; border: none; text-align: left; width: 100%; font-family: 'Space Grotesk', sans-serif; }
-        .mk-navitem:hover { color: var(--ink); background: rgba(234,241,255,0.05); }
-        .mk-navitem.active { background: linear-gradient(90deg, rgba(46,111,242,0.28), rgba(94,208,255,0.06)); color: #fff; font-weight: 600; box-shadow: inset 2px 0 0 var(--accent-2); }
-        .mk-navitem svg { flex-shrink: 0; }
-
-        .mk-main { flex: 1; min-width: 0; padding: 22px 26px 50px; overflow-x: hidden; }
-        .mk-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .mk-topbar h2 { margin: 0; font-family: 'Sora', sans-serif; font-size: 21px; font-weight: 700; }
-        .mk-userpill { display: flex; align-items: center; gap: 8px; background: rgba(234,241,255,0.06); border: 1px solid rgba(234,241,255,0.14); padding: 7px 12px; border-radius: 999px; font-size: 12.5px; }
-
-        .mk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px; }
-        .mk-stub { background: var(--card); color: var(--ink); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; padding: 16px 16px 14px; position: relative; overflow: hidden; }
-        .mk-stub::after { content: ""; position: absolute; left: 0; right: 0; bottom: 38px; border-bottom: 1.5px dashed rgba(234,241,255,0.14); }
-        .mk-stub-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-        .mk-stub-value { font-size: 22px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
-        .mk-stub-foot { margin-top: 12px; font-size: 10.5px; color: var(--muted); }
-
-        .mk-section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
-        .mk-section-title h2 { font-size: 17px; margin: 0; font-family: 'Sora', sans-serif; font-weight: 700; }
-
-        .mk-btn { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; border: none; padding: 9px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; box-shadow: 0 6px 16px rgba(46,111,242,0.35); }
-        .mk-btn:hover { filter: brightness(1.08); }
-        .mk-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
-
-        .mk-card-list { display: flex; flex-direction: column; gap: 12px; }
-        .mk-ticket { background: var(--card); color: var(--ink); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; display: grid; grid-template-columns: 1fr auto; overflow: hidden; }
-        .mk-ticket-main { padding: 14px 16px; }
-        .mk-ticket-side { background: var(--card-2); border-left: 1.5px dashed rgba(234,241,255,0.14); padding: 14px 14px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 130px; }
-        .mk-ticket-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-        .mk-ticket-title { font-weight: 700; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
-        .mk-badge { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; font-size: 10px; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
-        .mk-field { font-size: 12px; color: var(--muted); }
-        .mk-field b { color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
-        .mk-iconbtn { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; }
-        .mk-iconbtn:hover { color: var(--red); }
-        .mk-eyebtn { background: none; border: none; cursor: pointer; color: var(--muted); display: inline-flex; }
-
-        .mk-empty { background: rgba(234,241,255,0.04); border: 1px dashed rgba(234,241,255,0.2); border-radius: 10px; padding: 30px; text-align: center; color: var(--muted); font-size: 13.5px; }
-
-        .mk-table-wrap { background: var(--card); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; overflow-x: auto; }
-        .mk-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 480px; }
-        .mk-table th { text-align: left; padding: 10px 14px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(234,241,255,0.1); white-space: nowrap; }
-        .mk-table td { padding: 10px 14px; border-bottom: 1px solid rgba(234,241,255,0.06); white-space: nowrap; }
-        .mk-table tr:last-child td { border-bottom: none; }
-        .mk-table td:last-child { text-align: right; }
-
-        .mk-modal-backdrop { position: fixed; inset: 0; background: rgba(5,9,18,0.75); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-        .mk-modal { background: var(--card); color: var(--ink); border-radius: 12px; border: 1px solid rgba(94,208,255,0.18); padding: 22px; width: 100%; max-width: 440px; max-height: 86vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
-        .mk-modal h3 { font-family: 'Sora', sans-serif; font-weight: 700; margin: 0 0 14px; font-size: 17px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-        .mk-form-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
-        .mk-form-row label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
-        .mk-form-row input, .mk-form-row select, .mk-form-row textarea { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: var(--ink); }
-        .mk-form-row input::placeholder { color: rgba(234,241,255,0.35); }
-        .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .mk-preview { background: var(--card-2); border: 1px solid rgba(94,208,255,0.16); border-radius: 8px; padding: 12px 14px; margin-top: 6px; font-size: 13px; }
-        .mk-preview .economia { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 16px; }
-        .mk-alert-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(234,241,255,0.08); font-size: 13px; }
-        .mk-alert-row:last-child { border-bottom: none; }
-        .mk-signout-wrap { margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(234,241,255,0.14); }
-      `}</style>
-
+      <style>{APP_CSS}</style>
       <div className="mk-app">
         <div className="mk-sidebar">
           <div className="mk-sidebar-brand">
             <div className="mk-logo-badge"><Plane size={17} strokeWidth={2.2} /></div>
-            <div>
-              <div className="sub">Arduini</div>
-              <div className="name">Viaja que rola</div>
-            </div>
+            <div><div className="sub">Arduini</div><div className="name">Viaja que rola</div></div>
           </div>
           <div className="mk-navlist">
-            {navItems.map((n) => {
+            {NAV.map((n) => {
               const Icon = n.icon;
               return (
                 <button key={n.key} className={`mk-navitem ${tab === n.key ? "active" : ""}`} onClick={() => setTab(n.key)}>
@@ -399,17 +422,26 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
               );
             })}
           </div>
-          <div className="mk-signout-wrap">
-            <div className="mk-field" style={{ marginBottom: 6 }}>{userEmail}</div>
-            <button className="mk-navitem" onClick={onSignOut}>Sair</button>
-          </div>
+          {!impersonating && (
+            <div className="mk-signout-wrap">
+              <div className="mk-field" style={{ marginBottom: 6 }}>{userEmail}</div>
+              <button className="mk-navitem" onClick={onSignOut}>Sair</button>
+            </div>
+          )}
         </div>
 
         <div className="mk-main">
           <div className="mk-topbar">
             <h2>{currentLabel}</h2>
-            <div className="mk-userpill"><User size={14} /> Victor Arduini</div>
+            <div className="mk-userpill"><User size={14} /> {userEmail}</div>
           </div>
+
+          {impersonating && (
+            <div className="mk-impersonate-banner">
+              <span>Visualizando como <b>{impersonating.nome}</b></span>
+              <button className="mk-btn" style={{ padding: "6px 12px" }} onClick={impersonating.onExit}><ArrowLeft size={14} /> Voltar para admin</button>
+            </div>
+          )}
 
           {tab === "dashboard" && (
             <>
@@ -441,19 +473,35 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
                 </div>
               </div>
 
-              {totals.porPrograma.length > 0 && (
-                <div style={{ marginBottom: 22 }}>
-                  <div className="mk-section-title"><h2>Visão geral das contas</h2></div>
-                  <div className="mk-card-list">
-                    {totals.porPrograma.map((p) => (
-                      <div key={p.programa} className="mk-ticket" style={{ gridTemplateColumns: "1fr" }}>
-                        <div className="mk-ticket-main" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span className="mk-ticket-title"><Plane size={15} /> {p.programa}</span>
-                          <span className="mk-mono" style={{ fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")} milhas</span>
-                        </div>
+              <div className="mk-section-title"><h2>Visão Geral das Contas</h2></div>
+              {porProgramaCards.length === 0 ? (
+                <div className="mk-empty">Nenhuma conta cadastrada ainda. Vá em "Contas" para começar.</div>
+              ) : (
+                <div className="mk-programa-grid" style={{ marginBottom: 22 }}>
+                  {porProgramaCards.map((p) => (
+                    <div className="mk-programa-card" key={p.programa}>
+                      <div className="mk-programa-head">
+                        <span className="mk-programa-name">{p.programa}</span>
+                        <span className="mk-programa-icon" style={{ background: colorForPrograma(p.programa) }}><Plane size={14} /></span>
                       </div>
-                    ))}
-                  </div>
+                      <div className="mk-field">Saldo Atual</div>
+                      <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
+                      <div className="mk-field" style={{ marginTop: 10 }}>Custo Médio por Milheiro</div>
+                      <div className="mk-mono" style={{ fontWeight: 700 }}>{formatBRL(p.cpmAvg)}</div>
+                      {p.limiteCpfs && (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)" }}>
+                            <span>CPFs</span>
+                            <span className="mk-badge" style={{ background: p.cpfCount >= p.limiteCpfs ? "linear-gradient(90deg,#FF6B6B,#FF9B6B)" : "linear-gradient(90deg, var(--accent), var(--accent-2))" }}>
+                              {p.cpfCount >= p.limiteCpfs ? "Cheio" : "Ok"}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11, marginTop: 4 }}>{p.cpfCount} de {p.limiteCpfs}</div>
+                          <div className="mk-progress-track"><div className="mk-progress-fill" style={{ width: `${Math.min(100, (p.cpfCount / p.limiteCpfs) * 100)}%` }} /></div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -470,7 +518,6 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
                   </div>
                 </div>
               )}
-              {accounts.length === 0 && <div className="mk-empty">Nenhuma conta cadastrada ainda. Vá em "Contas" para começar.</div>}
             </>
           )}
 
@@ -573,8 +620,6 @@ function PainelMilhas({ userId, userEmail, onSignOut, isAdmin }) {
             </>
           )}
 
-          {tab === "admin" && isAdmin && <AdminPanel />}
-
           {activeModule && (
             <DataModule schema={activeModule} data={db[activeModule.key] || []} setData={updateSlice(activeModule.key)} allData={db} />
           )}
@@ -647,50 +692,62 @@ function EmissionFormModal({ accounts, onClose, onSave }) {
   );
 }
 
-// ---------- Painel do administrador (visualiza contas de todos os usuários) ----------
-function AdminPanel() {
-  const [users, setUsers] = useState([]);
+// ---------- Dashboard agregada do admin ----------
+function AdminAggregateDashboard({ clients }) {
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState(null);
-  const [selectedData, setSelectedData] = useState(null);
-  const [loadingUser, setLoadingUser] = useState(false);
+  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [] });
 
   useEffect(() => {
-    supabase.from("profiles").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (error) console.error(error);
-      setUsers(data || []);
+    (async () => {
+      const { data, error } = await supabase.from("app_data").select("user_id, data");
+      if (error) { console.error(error); setLoading(false); return; }
+      let totalMilhas = 0, totalEconomia = 0;
+      const porCliente = (data || []).map((row) => {
+        const d = row.data || {};
+        const accs = d.accounts || [];
+        const ems = d.emissions || [];
+        const milhas = accs.reduce((s, a) => s + Number(a.saldo || 0), 0);
+        const economia = ems.reduce((s, e) => {
+          const conta = accs.find((a) => a.id === e.accountId);
+          const cpm = conta ? Number(conta.cpm) : 0;
+          const custo = (Number(e.milhas) / 1000) * cpm + Number(e.taxas || 0);
+          return s + (Number(e.valorMercado || 0) - custo);
+        }, 0);
+        totalMilhas += milhas; totalEconomia += economia;
+        const client = clients.find((c) => c.id === row.user_id);
+        return { id: row.user_id, nome: client?.nome || client?.email || "Cliente removido", milhas, economia };
+      }).filter((c) => c.milhas > 0 || c.economia !== 0).sort((a, b) => b.milhas - a.milhas);
+      setAgg({ totalMilhas, totalEconomia, porCliente });
       setLoading(false);
-    });
-  }, []);
+    })();
+  }, [clients]);
 
-  const openUser = async (id) => {
-    setSelectedId(id);
-    setLoadingUser(true);
-    const { data, error } = await supabase.from("app_data").select("data").eq("user_id", id).maybeSingle();
-    if (error) console.error(error);
-    setSelectedData(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
-    setLoadingUser(false);
-  };
-
-  const selectedUser = users.find((u) => u.id === selectedId);
+  const vencendo = clients.filter((c) => c.plano_fim).map((c) => ({ ...c, dias: Math.ceil((new Date(c.plano_fim) - new Date()) / 86400000) })).filter((c) => c.dias <= 30).sort((a, b) => a.dias - b.dias);
 
   return (
     <>
-      <div className="mk-section-title"><h2>Administração — todos os usuários</h2></div>
+      <div className="mk-grid">
+        <div className="mk-stub"><div className="mk-stub-label"><Users size={13} /> Clientes gerenciados</div><div className="mk-stub-value">{clients.length}</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><Wallet size={13} /> Milhas sob gestão</div><div className="mk-stub-value">{agg.totalMilhas.toLocaleString("pt-BR")}</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><TrendingUp size={13} /> Economia gerada (todos)</div><div className="mk-stub-value" style={{ color: agg.totalEconomia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(agg.totalEconomia)}</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendo.length || "—"}</div><div className="mk-stub-foot">{vencendo.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
+      </div>
+
+      <div className="mk-section-title"><h2>Clientes por volume de milhas</h2></div>
       {loading ? (
-        <div className="mk-empty">Carregando usuários…</div>
-      ) : users.length === 0 ? (
-        <div className="mk-empty">Nenhum usuário cadastrado ainda.</div>
+        <div className="mk-empty">Carregando…</div>
+      ) : agg.porCliente.length === 0 ? (
+        <div className="mk-empty">Nenhum dado lançado pelos clientes ainda.</div>
       ) : (
         <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
           <table className="mk-table">
-            <thead><tr><th>E-mail</th><th>Cadastro</th><th></th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Milhas</th><th>Economia</th></tr></thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id} style={{ background: selectedId === u.id ? "rgba(94,208,255,0.06)" : "transparent" }}>
-                  <td>{u.email}{u.is_admin && <span className="mk-badge" style={{ marginLeft: 8 }}>admin</span>}</td>
-                  <td>{new Date(u.created_at).toLocaleDateString("pt-BR")}</td>
-                  <td><button className="mk-btn" style={{ padding: "6px 12px" }} onClick={() => openUser(u.id)}>Ver contas</button></td>
+              {agg.porCliente.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.nome}</td>
+                  <td>{c.milhas.toLocaleString("pt-BR")}</td>
+                  <td style={{ color: c.economia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(c.economia)}</td>
                 </tr>
               ))}
             </tbody>
@@ -698,40 +755,256 @@ function AdminPanel() {
         </div>
       )}
 
-      {selectedId && (
+      {vencendo.length > 0 && (
         <>
-          <div className="mk-section-title"><h2>Contas de milhas — {selectedUser?.email}</h2></div>
-          {loadingUser ? (
-            <div className="mk-empty">Carregando…</div>
-          ) : !selectedData || selectedData.accounts.length === 0 ? (
-            <div className="mk-empty">Esse usuário ainda não cadastrou contas.</div>
-          ) : (
-            <div className="mk-card-list">
-              {selectedData.accounts.map((a) => (
-                <div className="mk-ticket" key={a.id}>
-                  <div className="mk-ticket-main">
-                    <div className="mk-ticket-row"><span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span></span></div>
-                    <div className="mk-field">CPF: <b>{maskCpf(a.cpf)}</b></div>
-                    <div className="mk-field">Custo médio: <b>{formatBRL(a.cpm)} / milheiro</b></div>
-                  </div>
-                  <div className="mk-ticket-side">
-                    <div><div className="mk-field" style={{ textAlign: "right" }}>Saldo</div><div className="mk-mono" style={{ fontSize: 18, fontWeight: 700 }}>{Number(a.saldo).toLocaleString("pt-BR")}</div></div>
-                    <div className="mk-field">Validade: {formatDate(a.validade)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="mk-section-title"><h2>Planos vencendo</h2></div>
+          <div className="mk-stub">
+            {vencendo.map((c) => (
+              <div className="mk-alert-row" key={c.id}>
+                <span>{c.nome || c.email}</span>
+                <span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
+
+      <div className="mk-empty" style={{ marginTop: 22 }}>
+        Essa é uma primeira versão da dashboard de admin — me conta quais outros indicadores você quer ver aqui que eu expando.
+      </div>
     </>
   );
 }
 
-// ---------- Auth gate ----------
+// ---------- Cadastro/edição de cliente ----------
+function ClienteFormModal({ initial, onClose, onSaved }) {
+  const isEdit = !!initial;
+  const [form, setForm] = useState({
+    nome: initial?.nome || "", email: initial?.email || "", cpf: initial?.cpf || "",
+    telefone: initial?.telefone || "", senha: "",
+    planoValor: initial?.plano_valor || "", planoInicio: initial?.plano_inicio || "", planoFim: initial?.plano_fim || "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    setLoading(true); setErr("");
+    try {
+      if (isEdit) {
+        const { error } = await supabase.from("profiles").update({
+          nome: form.nome, cpf: onlyDigits(form.cpf) || null, telefone: form.telefone || null,
+          plano_valor: form.planoValor || null, plano_inicio: form.planoInicio || null, plano_fim: form.planoFim || null,
+        }).eq("id", initial.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.functions.invoke("admin-users", {
+          body: {
+            action: "create", email: form.email, password: form.senha, nome: form.nome,
+            cpf: onlyDigits(form.cpf), telefone: form.telefone,
+            planoValor: form.planoValor, planoInicio: form.planoInicio, planoFim: form.planoFim,
+          },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+      }
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e.message || "Erro ao salvar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{isEdit ? "Editar cliente" : "Novo cliente"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Nome</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} /></div>
+        <div className="mk-form-row"><label>E-mail (login)</label><input type="email" value={form.email} disabled={isEdit} onChange={(e) => set("email", e.target.value)} /></div>
+        {!isEdit && <div className="mk-form-row"><label>Senha</label><input type="password" value={form.senha} onChange={(e) => set("senha", e.target.value)} minLength={6} /></div>}
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
+          <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
+        </div>
+        <div className="mk-form-row"><label>Plano — valor pago (R$)</label><input type="number" step="0.01" value={form.planoValor} onChange={(e) => set("planoValor", e.target.value)} /></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Início do plano</label><input type="date" value={form.planoInicio} onChange={(e) => set("planoInicio", e.target.value)} /></div>
+          <div className="mk-form-row"><label>Fim do plano</label><input type="date" value={form.planoFim} onChange={(e) => set("planoFim", e.target.value)} /></div>
+        </div>
+        {err && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{err}</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={loading || !form.nome || (!isEdit && (!form.email || form.senha.length < 6))} onClick={submit}>
+          {loading ? "Salvando..." : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordModal({ client, onClose }) {
+  const [senha, setSenha] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState(false);
+
+  const submit = async () => {
+    setLoading(true); setErr("");
+    const { data, error } = await supabase.functions.invoke("admin-users", { body: { action: "reset_password", userId: client.id, password: senha } });
+    setLoading(false);
+    if (error || data?.error) { setErr(error?.message || data?.error || "Erro ao redefinir senha"); return; }
+    setOk(true);
+  };
+
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+        <h3>Redefinir senha <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-field" style={{ marginBottom: 10 }}>Cliente: <b>{client.email}</b></div>
+        {ok ? (
+          <div className="mk-preview">Senha alterada com sucesso.</div>
+        ) : (
+          <>
+            <div className="mk-form-row"><label>Nova senha</label><input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} minLength={6} /></div>
+            {err && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{err}</div>}
+            <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={loading || senha.length < 6} onClick={submit}>{loading ? "Aguarde..." : "Salvar nova senha"}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Contas Gerenciadas (só admin) ----------
+function ClientesManager({ clients, onChanged, onView }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [resetting, setResetting] = useState(null);
+
+  const planoStatus = (c) => {
+    if (!c.plano_fim) return null;
+    const dias = Math.ceil((new Date(c.plano_fim) - new Date()) / 86400000);
+    if (dias < 0) return { label: "Vencido", color: "#FF6B6B" };
+    if (dias <= 7) return { label: `${dias} dia(s)`, color: "#FFB020" };
+    return { label: "Ativo", color: "#34C495" };
+  };
+
+  return (
+    <>
+      <div className="mk-section-title">
+        <h2>Contas Gerenciadas</h2>
+        <button className="mk-btn" onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={15} /> Novo cliente</button>
+      </div>
+      {clients.length === 0 ? (
+        <div className="mk-empty">Nenhum cliente cadastrado ainda. Clique em "Novo cliente" para criar o primeiro login.</div>
+      ) : (
+        <div className="mk-table-wrap">
+          <table className="mk-table">
+            <thead><tr><th>Nome</th><th>E-mail</th><th>CPF</th><th>Plano</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {clients.map((c) => {
+                const st = planoStatus(c);
+                return (
+                  <tr key={c.id}>
+                    <td>{c.nome || "—"}</td>
+                    <td>{c.email}</td>
+                    <td>{maskCpf(c.cpf)}</td>
+                    <td>{c.plano_valor ? formatBRL(c.plano_valor) : "—"}{c.plano_fim ? ` · até ${formatDate(c.plano_fim)}` : ""}</td>
+                    <td>{st ? <span className="mk-badge" style={{ background: st.color, color: "#06122B" }}>{st.label}</span> : "—"}</td>
+                    <td>
+                      <button className="mk-iconbtn" onClick={() => onView(c)} title="Ver painel"><Eye size={14} /></button>
+                      <button className="mk-iconbtn" onClick={() => { setEditing(c); setShowForm(true); }} title="Editar"><Pencil size={14} /></button>
+                      <button className="mk-iconbtn" onClick={() => setResetting(c)} title="Redefinir senha"><KeyRound size={14} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {showForm && <ClienteFormModal initial={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSaved={onChanged} />}
+      {resetting && <ResetPasswordModal client={resetting} onClose={() => setResetting(null)} />}
+    </>
+  );
+}
+
+// ---------- Shell do admin: dashboard agregada + gestão de clientes + troca de usuário ----------
+function AdminShell({ adminEmail, onSignOut }) {
+  const [tab, setTab] = useState("dashboard");
+  const [clients, setClients] = useState([]);
+  const [viewingClient, setViewingClient] = useState(null);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  const loadClients = () => {
+    supabase.from("profiles").select("*").eq("is_admin", false).order("nome").then(({ data, error }) => {
+      if (error) console.error(error);
+      setClients(data || []);
+    });
+  };
+  useEffect(loadClients, []);
+
+  if (viewingClient) {
+    return (
+      <PainelMilhas
+        userId={viewingClient.id}
+        userEmail={viewingClient.email}
+        onSignOut={onSignOut}
+        impersonating={{ nome: viewingClient.nome || viewingClient.email, onExit: () => setViewingClient(null) }}
+      />
+    );
+  }
+
+  return (
+    <div className="mk-root">
+      <style>{APP_CSS}</style>
+      <div className="mk-app">
+        <div className="mk-sidebar">
+          <div className="mk-sidebar-brand">
+            <div className="mk-logo-badge"><Plane size={17} strokeWidth={2.2} /></div>
+            <div><div className="sub">Arduini</div><div className="name">Viaja que rola</div></div>
+          </div>
+          <div className="mk-navlist">
+            <button className={`mk-navitem ${tab === "dashboard" ? "active" : ""}`} onClick={() => setTab("dashboard")}><LayoutDashboard size={15} /> Dashboard</button>
+            <button className={`mk-navitem ${tab === "clientes" ? "active" : ""}`} onClick={() => setTab("clientes")}><Users size={15} /> Contas Gerenciadas</button>
+          </div>
+          <div className="mk-signout-wrap">
+            <div className="mk-field" style={{ marginBottom: 6 }}>{adminEmail} <span className="mk-badge" style={{ marginLeft: 6 }}>admin</span></div>
+            <button className="mk-navitem" onClick={onSignOut}>Sair</button>
+          </div>
+        </div>
+
+        <div className="mk-main">
+          <div className="mk-topbar">
+            <h2>{tab === "dashboard" ? "Dashboard" : "Contas Gerenciadas"}</h2>
+            <div style={{ position: "relative" }}>
+              <button className="mk-userpill" style={{ cursor: "pointer" }} onClick={() => setSwitcherOpen((s) => !s)}>
+                <User size={14} /> {adminEmail} <ChevronDown size={14} />
+              </button>
+              {switcherOpen && (
+                <div className="mk-switcher">
+                  <div className="mk-switcher-label">Ver como cliente</div>
+                  {clients.length === 0 ? (
+                    <div className="mk-field" style={{ padding: "8px 12px" }}>Nenhum cliente ainda</div>
+                  ) : clients.map((c) => (
+                    <button key={c.id} className="mk-switcher-item" onClick={() => { setViewingClient(c); setSwitcherOpen(false); }}>{c.nome || c.email}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {tab === "dashboard" && <AdminAggregateDashboard clients={clients} />}
+          {tab === "clientes" && <ClientesManager clients={clients} onChanged={loadClients} onView={(c) => setViewingClient(c)} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Login (e-mail ou CPF) ----------
 function LoginScreen() {
-  const [mode, setMode] = useState("signin"); // signin | signup
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -739,11 +1012,19 @@ function LoginScreen() {
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true); setMsg("");
-    const fn = mode === "signin" ? supabase.auth.signInWithPassword({ email, password }) : supabase.auth.signUp({ email, password });
-    const { error } = await fn;
+    let email = login.trim();
+    if (!email.includes("@")) {
+      const { data: resolvedEmail, error: lookupErr } = await supabase.rpc("email_for_cpf", { cpf_input: onlyDigits(login) });
+      if (lookupErr || !resolvedEmail) {
+        setLoading(false);
+        setMsg("CPF não encontrado. Confira com o administrador.");
+        return;
+      }
+      email = resolvedEmail;
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setMsg(error.message);
-    else if (mode === "signup") setMsg("Conta criada! Verifique seu e-mail para confirmar o acesso.");
+    if (error) setMsg("E-mail/CPF ou senha incorretos.");
   };
 
   return (
@@ -756,21 +1037,17 @@ function LoginScreen() {
         .mk-login-card p { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
         .mk-login-card input { width: 100%; border: 1px solid rgba(234,241,255,0.18); border-radius: 8px; padding: 10px 12px; font-size: 14px; background: rgba(234,241,255,0.06); color: var(--ink); margin-bottom: 12px; font-family: 'Space Grotesk', sans-serif; }
         .mk-login-card button[type=submit] { width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; border: none; padding: 11px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
-        .mk-login-card .switch { margin-top: 14px; text-align: center; font-size: 12.5px; color: var(--muted); cursor: pointer; }
         .mk-login-card .msg { margin-top: 12px; font-size: 12.5px; color: var(--accent-2); }
       `}</style>
       <div className="mk-login-card">
         <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--accent-2)" }}>Arduini</div>
         <h1>Viaja que rola</h1>
-        <p>{mode === "signin" ? "Entre para acessar seu painel de milhas." : "Crie sua conta para começar."}</p>
+        <p>Entre com seu e-mail ou CPF cadastrado pelo administrador.</p>
         <form onSubmit={submit}>
-          <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="text" placeholder="E-mail ou CPF" value={login} onChange={(e) => setLogin(e.target.value)} required />
           <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-          <button type="submit" disabled={loading}>{loading ? "Aguarde..." : mode === "signin" ? "Entrar" : "Criar conta"}</button>
+          <button type="submit" disabled={loading}>{loading ? "Aguarde..." : "Entrar"}</button>
         </form>
-        <div className="switch" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setMsg(""); }}>
-          {mode === "signin" ? "Não tem conta? Criar agora" : "Já tem conta? Entrar"}
-        </div>
         {msg && <div className="msg">{msg}</div>}
       </div>
     </div>
@@ -778,7 +1055,7 @@ function LoginScreen() {
 }
 
 export default function App() {
-  const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
+  const [session, setSession] = useState(undefined);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -799,9 +1076,12 @@ export default function App() {
   }
   if (!session) return <LoginScreen />;
 
+  if (isAdmin) {
+    return <AdminShell adminEmail={session.user.email} onSignOut={() => supabase.auth.signOut()} />;
+  }
+
   return (
     <PainelMilhas
-      isAdmin={isAdmin}
       userId={session.user.id}
       userEmail={session.user.email}
       onSignOut={() => supabase.auth.signOut()}
