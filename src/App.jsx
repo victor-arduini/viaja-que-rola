@@ -1028,17 +1028,25 @@ function LoginScreen() {
   };
 
   return (
-    <div className="mk-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+    <div className="mk-login-wrap">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Space+Grotesk:wght@400;500;600&display=swap');
-        .mk-root { --bg:#050912; --bg-2:#0B1A3D; --card:#0F2049; --accent:#2E6FF2; --accent-2:#5ED0FF; --ink:#EAF1FF; --muted:#8CA2C9; color-scheme:dark; font-family:'Space Grotesk',sans-serif; background: radial-gradient(circle at 15% -10%, rgba(94,208,255,0.16), transparent 45%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%); color: var(--ink); }
-        .mk-login-card { background: var(--card); border: 1px solid rgba(94,208,255,0.18); border-radius: 14px; padding: 32px; width: 100%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        .mk-login-wrap { --card:#0F2049; --accent:#2E6FF2; --accent-2:#5ED0FF; --ink:#EAF1FF; --muted:#8CA2C9; color-scheme:dark; font-family:'Space Grotesk',sans-serif; color: var(--ink); position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #050912; padding: 20px; }
+        .mk-login-bgimg { position: absolute; inset: 0; background-image: url('/login-bg.jpg'); background-size: cover; background-position: center 18%; z-index: 0; }
+        .mk-login-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,9,18,0.35) 0%, rgba(5,9,18,0.55) 45%, rgba(5,9,18,0.88) 100%), radial-gradient(circle at 85% 25%, rgba(46,111,242,0.12), transparent 55%); z-index: 1; }
+        .mk-login-card { position: relative; z-index: 2; background: rgba(15,32,73,0.72); backdrop-filter: blur(6px); border: 1px solid rgba(94,208,255,0.22); border-radius: 14px; padding: 32px; width: 100%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
         .mk-login-card h1 { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 22px; margin: 4px 0 4px; background: linear-gradient(90deg, var(--ink), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
         .mk-login-card p { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
-        .mk-login-card input { width: 100%; border: 1px solid rgba(234,241,255,0.18); border-radius: 8px; padding: 10px 12px; font-size: 14px; background: rgba(234,241,255,0.06); color: var(--ink); margin-bottom: 12px; font-family: 'Space Grotesk', sans-serif; }
+        .mk-login-card input { width: 100%; border: 1px solid rgba(234,241,255,0.18); border-radius: 8px; padding: 10px 12px; font-size: 14px; background: rgba(234,241,255,0.08); color: var(--ink); margin-bottom: 12px; font-family: 'Space Grotesk', sans-serif; }
         .mk-login-card button[type=submit] { width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; border: none; padding: 11px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
         .mk-login-card .msg { margin-top: 12px; font-size: 12.5px; color: var(--accent-2); }
+        @media (max-width: 640px) {
+          .mk-login-bgimg { background-position: center 12%; }
+          .mk-login-card { padding: 26px 22px; }
+        }
       `}</style>
+      <div className="mk-login-bgimg" />
+      <div className="mk-login-overlay" />
       <div className="mk-login-card">
         <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--accent-2)" }}>Arduini</div>
         <h1>Viaja que rola</h1>
