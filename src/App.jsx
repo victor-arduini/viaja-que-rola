@@ -4,7 +4,7 @@ import {
   Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
-  Pencil, ChevronDown, ArrowLeft, KeyRound
+  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu
 } from "lucide-react";
 
 const PROGRAMAS = ["Smiles", "LATAM Pass", "Azul", "Livelo", "Esfera", "Iberia", "Accor", "Outro"];
@@ -198,6 +198,40 @@ const APP_CSS = `
   .mk-switcher-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--ink); font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
   .mk-switcher-item:hover { background: rgba(234,241,255,0.06); }
   .mk-impersonate-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: linear-gradient(90deg, rgba(46,111,242,0.18), rgba(94,208,255,0.06)); border: 1px solid rgba(94,208,255,0.25); border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 13px; }
+
+  /* ---------- Responsividade ---------- */
+  .mk-menu-toggle { display: none; background: rgba(234,241,255,0.06); border: 1px solid rgba(234,241,255,0.14); color: var(--ink); padding: 8px 10px; border-radius: 8px; cursor: pointer; align-items: center; justify-content: center; flex-shrink: 0; }
+  .mk-sidebar-close { display: none; margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; }
+  .mk-sidebar-overlay { display: none; }
+  .mk-topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .mk-topbar-left h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (max-width: 860px) {
+    .mk-app { position: relative; }
+    .mk-sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 250px;
+      transform: translateX(-100%); transition: transform .25s ease;
+      box-shadow: 20px 0 60px rgba(0,0,0,0.5); border-radius: 0; overflow-y: auto;
+    }
+    .mk-sidebar.open { transform: translateX(0); }
+    .mk-sidebar-overlay { display: block; position: fixed; inset: 0; background: rgba(5,9,18,0.6); z-index: 55; }
+    .mk-menu-toggle { display: inline-flex; }
+    .mk-sidebar-close { display: inline-flex; }
+    .mk-main { padding: 16px 16px 40px; width: 100%; }
+    .mk-topbar h2 { font-size: 18px; }
+    .mk-form-cols { grid-template-columns: 1fr; }
+    .mk-ticket { grid-template-columns: 1fr; }
+    .mk-ticket-side { border-left: none; border-top: 1.5px dashed rgba(234,241,255,0.14); flex-direction: row; align-items: center; justify-content: space-between; }
+    .mk-switcher { right: 0; left: auto; max-width: calc(100vw - 64px); }
+    .mk-userpill span.mk-userpill-text { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+  @media (max-width: 480px) {
+    .mk-root { border-radius: 0; }
+    .mk-stub-value { font-size: 19px; }
+    .mk-login-card { padding: 22px 18px; }
+    .mk-topbar h2 { font-size: 16px; }
+    .mk-table { font-size: 11.5px; }
+  }
 `;
 
 function renderCell(field, row, allData) {
@@ -313,6 +347,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showCpf, setShowCpf] = useState({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showEmissionForm, setShowEmissionForm] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -407,16 +442,18 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     <div className="mk-root">
       <style>{APP_CSS}</style>
       <div className="mk-app">
-        <div className="mk-sidebar">
+        {sidebarOpen && <div className="mk-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+        <div className={`mk-sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="mk-sidebar-brand">
             <div className="mk-logo-badge"><Plane size={17} strokeWidth={2.2} /></div>
             <div><div className="sub">Arduini</div><div className="name">Viaja que rola</div></div>
+            <button className="mk-sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
           </div>
           <div className="mk-navlist">
             {NAV.map((n) => {
               const Icon = n.icon;
               return (
-                <button key={n.key} className={`mk-navitem ${tab === n.key ? "active" : ""}`} onClick={() => setTab(n.key)}>
+                <button key={n.key} className={`mk-navitem ${tab === n.key ? "active" : ""}`} onClick={() => { setTab(n.key); setSidebarOpen(false); }}>
                   <Icon size={15} /> {n.label}
                 </button>
               );
@@ -432,8 +469,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
         <div className="mk-main">
           <div className="mk-topbar">
-            <h2>{currentLabel}</h2>
-            <div className="mk-userpill"><User size={14} /> {userEmail}</div>
+            <div className="mk-topbar-left">
+              <button className="mk-menu-toggle" onClick={() => setSidebarOpen(true)}><Menu size={18} /></button>
+              <h2>{currentLabel}</h2>
+            </div>
+            <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{userEmail}</span></div>
           </div>
 
           {impersonating && (
@@ -935,6 +975,7 @@ function AdminShell({ adminEmail, onSignOut }) {
   const [clients, setClients] = useState([]);
   const [viewingClient, setViewingClient] = useState(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const loadClients = () => {
     supabase.from("profiles").select("*").eq("is_admin", false).order("nome").then(({ data, error }) => {
@@ -959,14 +1000,16 @@ function AdminShell({ adminEmail, onSignOut }) {
     <div className="mk-root">
       <style>{APP_CSS}</style>
       <div className="mk-app">
-        <div className="mk-sidebar">
+        {sidebarOpen && <div className="mk-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+        <div className={`mk-sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="mk-sidebar-brand">
             <div className="mk-logo-badge"><Plane size={17} strokeWidth={2.2} /></div>
             <div><div className="sub">Arduini</div><div className="name">Viaja que rola</div></div>
+            <button className="mk-sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
           </div>
           <div className="mk-navlist">
-            <button className={`mk-navitem ${tab === "dashboard" ? "active" : ""}`} onClick={() => setTab("dashboard")}><LayoutDashboard size={15} /> Dashboard</button>
-            <button className={`mk-navitem ${tab === "clientes" ? "active" : ""}`} onClick={() => setTab("clientes")}><Users size={15} /> Contas Gerenciadas</button>
+            <button className={`mk-navitem ${tab === "dashboard" ? "active" : ""}`} onClick={() => { setTab("dashboard"); setSidebarOpen(false); }}><LayoutDashboard size={15} /> Dashboard</button>
+            <button className={`mk-navitem ${tab === "clientes" ? "active" : ""}`} onClick={() => { setTab("clientes"); setSidebarOpen(false); }}><Users size={15} /> Contas Gerenciadas</button>
           </div>
           <div className="mk-signout-wrap">
             <div className="mk-field" style={{ marginBottom: 6 }}>{adminEmail} <span className="mk-badge" style={{ marginLeft: 6 }}>admin</span></div>
@@ -976,10 +1019,13 @@ function AdminShell({ adminEmail, onSignOut }) {
 
         <div className="mk-main">
           <div className="mk-topbar">
-            <h2>{tab === "dashboard" ? "Dashboard" : "Contas Gerenciadas"}</h2>
+            <div className="mk-topbar-left">
+              <button className="mk-menu-toggle" onClick={() => setSidebarOpen(true)}><Menu size={18} /></button>
+              <h2>{tab === "dashboard" ? "Dashboard" : "Contas Gerenciadas"}</h2>
+            </div>
             <div style={{ position: "relative" }}>
               <button className="mk-userpill" style={{ cursor: "pointer" }} onClick={() => setSwitcherOpen((s) => !s)}>
-                <User size={14} /> {adminEmail} <ChevronDown size={14} />
+                <User size={14} /> <span className="mk-userpill-text">{adminEmail}</span> <ChevronDown size={14} />
               </button>
               {switcherOpen && (
                 <div className="mk-switcher">
