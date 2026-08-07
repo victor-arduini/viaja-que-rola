@@ -344,6 +344,7 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
 function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [tab, setTab] = useState("dashboard");
   const [db, setDb] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [showCpf, setShowCpf] = useState({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showEmissionForm, setShowEmissionForm] = useState(false);
@@ -355,6 +356,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
+    supabase.from("profiles").select("plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+      setProfile(data || {});
+    });
   }, [userId]);
 
   useEffect(() => {
@@ -393,8 +397,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     const economiaEmissoes = emissionsCalc.reduce((s, e) => s + e.economia, 0);
     const economiaReservas = reservasCalc.reduce((s, r) => s + r.economia, 0);
     const vencendo = accounts.filter((a) => a.validade).map((a) => ({ ...a, dias: Math.ceil((new Date(a.validade) - new Date()) / 86400000) })).filter((a) => a.dias <= 60).sort((a, b) => a.dias - b.dias);
-    return { totalMilhas, patrimonio, economiaEmissoes, economiaReservas, vencendo };
-  }, [accounts, emissionsCalc, reservasCalc]);
+    const custoPlano = Number(profile?.plano_valor || 0);
+    const custoAssinaturas = (db?.assinaturas || []).reduce((s, a) => s + Number(a.valorMensal || 0), 0);
+    const custoCompras = (db?.compraDePontos || []).reduce((s, c) => s + Number(c.valorPago || 0), 0)
+      + (db?.comprasBonificadas || []).reduce((s, c) => s + Number(c.valorPago || 0), 0);
+    const custoTotal = custoPlano + custoAssinaturas + custoCompras;
+    return { totalMilhas, patrimonio, economiaEmissoes, economiaReservas, vencendo, custoPlano, custoAssinaturas, custoCompras, custoTotal };
+  }, [accounts, emissionsCalc, reservasCalc, profile, db]);
 
   // Cards de programa, agrupando as contas por programa (estilo "Visão Geral das Contas")
   const porProgramaCards = useMemo(() => {
@@ -510,6 +519,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                   <div className="mk-stub-label"><CalendarClock size={13} /> Pontos a vencer</div>
                   <div className="mk-stub-value">{totals.vencendo.length || "—"}</div>
                   <div className="mk-stub-foot">{totals.vencendo.length ? "nos próximos 60 dias" : "nenhum ponto a vencer em breve"}</div>
+                </div>
+                <div className="mk-stub">
+                  <div className="mk-stub-label"><Wallet size={13} /> Custo Total</div>
+                  <div className="mk-stub-value">{formatBRL(totals.custoTotal)}</div>
+                  <div className="mk-stub-foot">
+                    Plano {formatBRL(totals.custoPlano)}{profile?.plano_parcelas ? ` (${profile.plano_parcelas}x)` : ""} · Assinaturas {formatBRL(totals.custoAssinaturas)} · Compras {formatBRL(totals.custoCompras)}
+                  </div>
                 </div>
               </div>
 
@@ -822,7 +838,8 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
   const [form, setForm] = useState({
     nome: initial?.nome || "", email: initial?.email || "", cpf: initial?.cpf || "",
     telefone: initial?.telefone || "", senha: "",
-    planoValor: initial?.plano_valor || "", planoInicio: initial?.plano_inicio || "", planoFim: initial?.plano_fim || "",
+    planoValor: initial?.plano_valor || "", planoParcelas: initial?.plano_parcelas || "",
+    planoInicio: initial?.plano_inicio || "", planoFim: initial?.plano_fim || "",
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -834,15 +851,16 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
       if (isEdit) {
         const { error } = await supabase.from("profiles").update({
           nome: form.nome, cpf: onlyDigits(form.cpf) || null, telefone: form.telefone || null,
-          plano_valor: form.planoValor || null, plano_inicio: form.planoInicio || null, plano_fim: form.planoFim || null,
+          plano_valor: form.planoValor || null, plano_parcelas: form.planoParcelas || null,
+          plano_inicio: form.planoInicio || null, plano_fim: form.planoFim || null,
         }).eq("id", initial.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.functions.invoke("admin-users", {
+        const { data, error } = await supabase.functions.invoke("clever-service", {
           body: {
             action: "create", email: form.email, password: form.senha, nome: form.nome,
             cpf: onlyDigits(form.cpf), telefone: form.telefone,
-            planoValor: form.planoValor, planoInicio: form.planoInicio, planoFim: form.planoFim,
+            planoValor: form.planoValor, planoParcelas: form.planoParcelas, planoInicio: form.planoInicio, planoFim: form.planoFim,
           },
         });
         if (error) throw error;
@@ -868,7 +886,10 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
           <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
           <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
         </div>
-        <div className="mk-form-row"><label>Plano — valor pago (R$)</label><input type="number" step="0.01" value={form.planoValor} onChange={(e) => set("planoValor", e.target.value)} /></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Plano — valor pago (R$)</label><input type="number" step="0.01" value={form.planoValor} onChange={(e) => set("planoValor", e.target.value)} /></div>
+          <div className="mk-form-row"><label>Parcelas</label><input type="number" min="1" step="1" value={form.planoParcelas} onChange={(e) => set("planoParcelas", e.target.value)} placeholder="1" /></div>
+        </div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Início do plano</label><input type="date" value={form.planoInicio} onChange={(e) => set("planoInicio", e.target.value)} /></div>
           <div className="mk-form-row"><label>Fim do plano</label><input type="date" value={form.planoFim} onChange={(e) => set("planoFim", e.target.value)} /></div>
@@ -890,7 +911,7 @@ function ResetPasswordModal({ client, onClose }) {
 
   const submit = async () => {
     setLoading(true); setErr("");
-    const { data, error } = await supabase.functions.invoke("admin-users", { body: { action: "reset_password", userId: client.id, password: senha } });
+    const { data, error } = await supabase.functions.invoke("clever-service", { body: { action: "reset_password", userId: client.id, password: senha } });
     setLoading(false);
     if (error || data?.error) { setErr(error?.message || data?.error || "Erro ao redefinir senha"); return; }
     setOk(true);
@@ -949,7 +970,7 @@ function ClientesManager({ clients, onChanged, onView }) {
                     <td>{c.nome || "—"}</td>
                     <td>{c.email}</td>
                     <td>{maskCpf(c.cpf)}</td>
-                    <td>{c.plano_valor ? formatBRL(c.plano_valor) : "—"}{c.plano_fim ? ` · até ${formatDate(c.plano_fim)}` : ""}</td>
+                    <td>{c.plano_valor ? formatBRL(c.plano_valor) : "—"}{c.plano_parcelas ? ` em ${c.plano_parcelas}x` : ""}{c.plano_fim ? ` · até ${formatDate(c.plano_fim)}` : ""}</td>
                     <td>{st ? <span className="mk-badge" style={{ background: st.color, color: "#06122B" }}>{st.label}</span> : "—"}</td>
                     <td>
                       <button className="mk-iconbtn" onClick={() => onView(c)} title="Ver painel"><Eye size={14} /></button>
