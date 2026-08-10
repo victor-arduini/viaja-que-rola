@@ -41,6 +41,25 @@ function colorForPrograma(nome) {
   return "#2E6FF2";
 }
 
+function slugifyPrograma(nome) {
+  return (nome || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .toLowerCase().trim().replace(/\s+/g, "-");
+}
+
+// Tenta carregar a logo em /public/logos/<slug>.png — se não existir, volta pro ícone colorido.
+function ProgramaIcon({ nome }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <span className="mk-programa-icon" style={{ background: colorForPrograma(nome) }}><Plane size={14} /></span>;
+  }
+  return (
+    <span className="mk-programa-icon" style={{ background: "#fff", padding: 4 }}>
+      <img src={`/logos/${slugifyPrograma(nome)}.png`} alt={nome} style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={() => setFailed(true)} />
+    </span>
+  );
+}
+
 // ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
 const MODULES = [
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard, fields: [
@@ -189,6 +208,8 @@ const APP_CSS = `
   .mk-form-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
   .mk-form-row label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
   .mk-form-row input, .mk-form-row select, .mk-form-row textarea { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: var(--ink); }
+  .mk-form-row select { color-scheme: dark; }
+  .mk-form-row select option { background-color: #0F2049; color: #EAF1FF; }
   .mk-form-row input:disabled { opacity: 0.5; }
   .mk-form-row input::placeholder { color: rgba(234,241,255,0.35); }
   .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -367,7 +388,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("nome, cpf, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
@@ -535,7 +556,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-programa-card" key={p.programa}>
                       <div className="mk-programa-head">
                         <span className="mk-programa-name">{p.programa}</span>
-                        <span className="mk-programa-icon" style={{ background: colorForPrograma(p.programa) }}><Plane size={14} /></span>
+                        <ProgramaIcon nome={p.programa} />
                       </div>
                       <div className="mk-field">Saldo Atual</div>
                       <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
@@ -667,14 +688,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         </div>
       </div>
 
-      {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount(d); setShowAccountForm(false); }} />}
+      {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount({ ...d, titular: profile?.nome || userEmail, cpf: profile?.cpf || "" }); setShowAccountForm(false); }} />}
       {showEmissionForm && <EmissionFormModal accounts={accounts} onClose={() => setShowEmissionForm(false)} onSave={(d) => { addEmission(d); setShowEmissionForm(false); }} />}
     </div>
   );
 }
 
 function AccountFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", cpf: "", saldo: "", cpm: "", validade: "" });
+  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], saldo: "", cpm: "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
   return (
@@ -687,14 +708,11 @@ function AccountFormModal({ onClose, onSave }) {
         <div className="mk-form-row"><label>Marca</label>
           <select value={form.marca} onChange={(e) => set("marca", e.target.value)}>{MARCAS_POR_TIPO[form.tipo].map((m) => <option key={m} value={m}>{m}</option>)}</select>
         </div>
-        <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
-        <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
-        <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, cpf: form.cpf, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, saldo: form.saldo, cpm: form.cpm })}>Salvar programa</button>
       </div>
     </div>
   );
