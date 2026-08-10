@@ -7,7 +7,22 @@ import {
   Pencil, ChevronDown, ArrowLeft, KeyRound, Menu
 } from "lucide-react";
 
-const PROGRAMAS = ["Smiles", "LATAM Pass", "Azul", "Livelo", "Esfera", "Iberia", "Accor", "Outro"];
+const TIPOS_PROGRAMA = ["Aéreo", "Cartão", "Hotel"];
+const MARCAS_POR_TIPO = {
+  "Aéreo": ["Azul", "Latam", "Ibéria", "Smiles", "Tap", "Outro"],
+  "Cartão": ["Átomos", "Caixa", "Coopera", "Curtaí", "Esfera", "Itaú", "Livelo", "Outro"],
+  "Hotel": ["All Accor", "Outro"],
+};
+// Contas criadas antes dessa estrutura não têm "tipo" salvo — infere pela marca pra não quebrar os totais.
+const CARTAO_MARCAS = ["átomos", "atomos", "caixa", "coopera", "curtaí", "curtai", "esfera", "itaú", "itau", "livelo"];
+const HOTEL_MARCAS = ["accor"];
+function inferTipo(a) {
+  if (a.tipo) return a.tipo;
+  const nome = (a.programa || "").toLowerCase();
+  if (HOTEL_MARCAS.some((m) => nome.includes(m))) return "Hotel";
+  if (CARTAO_MARCAS.some((m) => nome.includes(m))) return "Cartão";
+  return "Aéreo";
+}
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const onlyDigits = (s) => (s || "").replace(/\D/g, "");
 const formatBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -16,7 +31,9 @@ const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if
 
 const PROGRAM_COLORS = {
   smiles: "#FF7A00", "latam pass": "#7B2D8E", latam: "#7B2D8E", tudoazul: "#0039A6", azul: "#0039A6",
-  livelo: "#E4007C", esfera: "#6B7280", accor: "#151515", iberia: "#C6007E",
+  livelo: "#E4007C", esfera: "#6B7280", accor: "#151515", iberia: "#C6007E", ibéria: "#C6007E",
+  tap: "#CE0E2D", átomos: "#7A3FF2", atomos: "#7A3FF2", caixa: "#0055A4", coopera: "#00A651",
+  curtaí: "#FF5A00", curtai: "#FF5A00", itaú: "#EC7000", itau: "#EC7000",
 };
 function colorForPrograma(nome) {
   const key = (nome || "").toLowerCase();
@@ -26,14 +43,9 @@ function colorForPrograma(nome) {
 
 // ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
 const MODULES = [
-  { key: "programas", label: "Programas", icon: Layers, fields: [
-      { key: "nome", label: "Nome", type: "text" },
-      { key: "tipo", label: "Tipo", type: "select", options: ["Aéreo", "Hotel", "Cartão", "Bancário"] },
-      { key: "limiteCpfs", label: "Limite de CPFs", type: "number" },
-  ]},
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard, fields: [
       { key: "nome", label: "Assinatura", type: "text" },
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "programas", labelField: "nome" },
+      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "valorMensal", label: "Valor mensal", type: "currency" },
       { key: "vencimento", label: "Vencimento", type: "date" },
   ]},
@@ -51,14 +63,14 @@ const MODULES = [
       { key: "valorMercado", label: "Valor de mercado", type: "currency" },
   ]},
   { key: "comprasBonificadas", label: "Compras Bonificadas", icon: Gift, fields: [
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "programas", labelField: "nome" },
+      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "pontos", label: "Pontos comprados", type: "number" },
       { key: "bonusPct", label: "Bônus (%)", type: "number" },
       { key: "valorPago", label: "Valor pago", type: "currency" },
       { key: "data", label: "Data", type: "date" },
   ]},
   { key: "compraDePontos", label: "Compra de Pontos", icon: ShoppingCart, fields: [
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "programas", labelField: "nome" },
+      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "pontos", label: "Pontos", type: "number" },
       { key: "valorPago", label: "Valor pago", type: "currency" },
       { key: "data", label: "Data", type: "date" },
@@ -70,21 +82,21 @@ const MODULES = [
       { key: "pontosAcumulados", label: "Pontos acumulados", type: "number" },
   ]},
   { key: "transferencias", label: "Transferências", icon: ArrowLeftRight, fields: [
-      { key: "origemId", label: "Origem", type: "relation", relationTo: "programas", labelField: "nome" },
-      { key: "destinoId", label: "Destino", type: "relation", relationTo: "programas", labelField: "nome" },
+      { key: "origemId", label: "Origem", type: "relation", relationTo: "accounts", labelField: "programa" },
+      { key: "destinoId", label: "Destino", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "pontos", label: "Pontos transferidos", type: "number" },
       { key: "bonusPct", label: "Bônus (%)", type: "number" },
       { key: "data", label: "Data", type: "date" },
   ]},
   { key: "vendasDeMilhas", label: "Vendas de Milhas", icon: DollarSign, fields: [
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "programas", labelField: "nome" },
+      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "milhas", label: "Milhas vendidas", type: "number" },
       { key: "valorVenda", label: "Valor da venda", type: "currency" },
       { key: "comprador", label: "Comprador", type: "text" },
       { key: "data", label: "Data", type: "date" },
   ]},
   { key: "resgates", label: "Resgates", icon: Ticket, fields: [
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "programas", labelField: "nome" },
+      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "milhas", label: "Milhas usadas", type: "number" },
       { key: "descricao", label: "Resgate", type: "text" },
       { key: "valorEconomizado", label: "Economia", type: "currency" },
@@ -94,8 +106,7 @@ const MODULES = [
 
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "programas", label: "Programas", icon: Layers },
-  { key: "contas", label: "Contas", icon: Wallet },
+  { key: "programas", label: "Programas", icon: Wallet },
   { key: "emissoes", label: "Emissões", icon: PlaneTakeoff },
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard },
   { key: "passageiros", label: "Passageiros", icon: User },
@@ -109,7 +120,7 @@ const NAV = [
   { key: "cpfs", label: "Controle de CPFs", icon: ShieldCheck },
 ];
 
-const EMPTY_DB = { accounts: [], emissions: [], programas: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+const EMPTY_DB = { accounts: [], emissions: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
 
 // ---------- CSS compartilhado entre o painel do cliente e o do admin ----------
 const APP_CSS = `
@@ -392,8 +403,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   })), [db]);
 
   const totals = useMemo(() => {
-    const totalMilhas = accounts.reduce((s, a) => s + Number(a.saldo || 0), 0);
-    const patrimonio = accounts.reduce((s, a) => s + (Number(a.saldo || 0) / 1000) * Number(a.cpm || 0), 0);
+    const totalPontos = accounts.filter((a) => inferTipo(a) !== "Aéreo").reduce((s, a) => s + Number(a.saldo || 0), 0);
+    const totalMilhas = accounts.filter((a) => inferTipo(a) === "Aéreo").reduce((s, a) => s + Number(a.saldo || 0), 0);
+    const patrimonioEstimado = accounts.reduce((s, a) => s + (Number(a.saldo || 0) / 1000) * Number(a.cpm || 0), 0);
     const economiaEmissoes = emissionsCalc.reduce((s, e) => s + e.economia, 0);
     const economiaReservas = reservasCalc.reduce((s, r) => s + r.economia, 0);
     const vencendo = accounts.filter((a) => a.validade).map((a) => ({ ...a, dias: Math.ceil((new Date(a.validade) - new Date()) / 86400000) })).filter((a) => a.dias <= 60).sort((a, b) => a.dias - b.dias);
@@ -402,7 +414,8 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     const custoCompras = (db?.compraDePontos || []).reduce((s, c) => s + Number(c.valorPago || 0), 0)
       + (db?.comprasBonificadas || []).reduce((s, c) => s + Number(c.valorPago || 0), 0);
     const custoTotal = custoPlano + custoAssinaturas + custoCompras;
-    return { totalMilhas, patrimonio, economiaEmissoes, economiaReservas, vencendo, custoPlano, custoAssinaturas, custoCompras, custoTotal };
+    const economiaTotal = economiaEmissoes + economiaReservas - custoTotal;
+    return { totalPontos, totalMilhas, patrimonioEstimado, economiaEmissoes, economiaReservas, vencendo, custoTotal, economiaTotal };
   }, [accounts, emissionsCalc, reservasCalc, profile, db]);
 
   // Cards de programa, agrupando as contas por programa (estilo "Visão Geral das Contas")
@@ -416,15 +429,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       map[key].cpmCount += 1;
       map[key].cpfs.add(a.cpf);
     });
-    return Object.values(map).map((p) => {
-      const progRecord = (db?.programas || []).find((pr) => (pr.nome || "").toLowerCase() === p.programa.toLowerCase());
-      return {
-        ...p,
-        cpmAvg: p.cpmCount ? p.cpmSum / p.cpmCount : 0,
-        cpfCount: p.cpfs.size,
-        limiteCpfs: progRecord?.limiteCpfs ? Number(progRecord.limiteCpfs) : null,
-      };
-    }).sort((a, b) => b.saldo - a.saldo);
+    return Object.values(map).map((p) => ({
+      ...p,
+      cpmAvg: p.cpmCount ? p.cpmSum / p.cpmCount : 0,
+      cpfCount: p.cpfs.size,
+    })).sort((a, b) => b.saldo - a.saldo);
   }, [accounts, db]);
 
   const cpfGroups = useMemo(() => {
@@ -496,42 +505,30 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <>
               <div className="mk-grid">
                 <div className="mk-stub">
-                  <div className="mk-stub-label"><Wallet size={13} /> Saldo total de pontos</div>
+                  <div className="mk-stub-label"><CreditCard size={13} /> Total de Pontos</div>
+                  <div className="mk-stub-value">{totals.totalPontos.toLocaleString("pt-BR")}</div>
+                  <div className="mk-stub-foot">Programas de cartão e hotel</div>
+                </div>
+                <div className="mk-stub">
+                  <div className="mk-stub-label"><Plane size={13} /> Total de Milhas</div>
                   <div className="mk-stub-value">{totals.totalMilhas.toLocaleString("pt-BR")}</div>
-                  <div className="mk-stub-foot">Em {accounts.length} conta(s) diferentes</div>
+                  <div className="mk-stub-foot">Programas de companhias aéreas</div>
                 </div>
                 <div className="mk-stub">
-                  <div className="mk-stub-label"><Award size={13} /> Patrimônio em milhas</div>
-                  <div className="mk-stub-value">{formatBRL(totals.patrimonio)}</div>
-                  <div className="mk-stub-foot">Valor estimado das suas milhas</div>
+                  <div className="mk-stub-label"><Award size={13} /> Patrimônio Estimado</div>
+                  <div className="mk-stub-value">{formatBRL(totals.patrimonioEstimado)}</div>
+                  <div className="mk-stub-foot">Pontos + milhas, pelo custo médio</div>
                 </div>
                 <div className="mk-stub">
-                  <div className="mk-stub-label"><TrendingUp size={13} /> Economia em emissões</div>
-                  <div className="mk-stub-value" style={{ color: totals.economiaEmissoes >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(totals.economiaEmissoes)}</div>
-                  <div className="mk-stub-foot">{emissionsCalc.length} emissão(ões)</div>
-                </div>
-                <div className="mk-stub">
-                  <div className="mk-stub-label"><CalendarCheck size={13} /> Economia em reservas</div>
-                  <div className="mk-stub-value" style={{ color: totals.economiaReservas >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(totals.economiaReservas)}</div>
-                  <div className="mk-stub-foot">{(db.reservas || []).length} reserva(s)</div>
-                </div>
-                <div className="mk-stub">
-                  <div className="mk-stub-label"><CalendarClock size={13} /> Pontos a vencer</div>
-                  <div className="mk-stub-value">{totals.vencendo.length || "—"}</div>
-                  <div className="mk-stub-foot">{totals.vencendo.length ? "nos próximos 60 dias" : "nenhum ponto a vencer em breve"}</div>
-                </div>
-                <div className="mk-stub">
-                  <div className="mk-stub-label"><Wallet size={13} /> Custo Total</div>
-                  <div className="mk-stub-value">{formatBRL(totals.custoTotal)}</div>
-                  <div className="mk-stub-foot">
-                    Plano {formatBRL(totals.custoPlano)}{profile?.plano_parcelas ? ` (${profile.plano_parcelas}x)` : ""} · Assinaturas {formatBRL(totals.custoAssinaturas)} · Compras {formatBRL(totals.custoCompras)}
-                  </div>
+                  <div className="mk-stub-label"><TrendingUp size={13} /> Economia Total</div>
+                  <div className="mk-stub-value" style={{ color: totals.economiaTotal >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(totals.economiaTotal)}</div>
+                  <div className="mk-stub-foot">Emissões + reservas, descontados os custos</div>
                 </div>
               </div>
 
               <div className="mk-section-title"><h2>Visão Geral das Contas</h2></div>
               {porProgramaCards.length === 0 ? (
-                <div className="mk-empty">Nenhuma conta cadastrada ainda. Vá em "Contas" para começar.</div>
+                <div className="mk-empty">Nenhum programa cadastrado ainda. Vá em "Programas" para começar.</div>
               ) : (
                 <div className="mk-programa-grid" style={{ marginBottom: 22 }}>
                   {porProgramaCards.map((p) => (
@@ -544,18 +541,6 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
                       <div className="mk-field" style={{ marginTop: 10 }}>Custo Médio por Milheiro</div>
                       <div className="mk-mono" style={{ fontWeight: 700 }}>{formatBRL(p.cpmAvg)}</div>
-                      {p.limiteCpfs && (
-                        <div style={{ marginTop: 12 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)" }}>
-                            <span>CPFs</span>
-                            <span className="mk-badge" style={{ background: p.cpfCount >= p.limiteCpfs ? "linear-gradient(90deg,#FF6B6B,#FF9B6B)" : "linear-gradient(90deg, var(--accent), var(--accent-2))" }}>
-                              {p.cpfCount >= p.limiteCpfs ? "Cheio" : "Ok"}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 11, marginTop: 4 }}>{p.cpfCount} de {p.limiteCpfs}</div>
-                          <div className="mk-progress-track"><div className="mk-progress-fill" style={{ width: `${Math.min(100, (p.cpfCount / p.limiteCpfs) * 100)}%` }} /></div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -577,14 +562,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             </>
           )}
 
-          {tab === "contas" && (
+          {tab === "programas" && (
             <>
               <div className="mk-section-title">
-                <h2>Contas de milhas</h2>
-                <button className="mk-btn" onClick={() => setShowAccountForm(true)}><Plus size={15} /> Nova conta</button>
+                <h2>Programas</h2>
+                <button className="mk-btn" onClick={() => setShowAccountForm(true)}><Plus size={15} /> Novo programa</button>
               </div>
               {accounts.length === 0 ? (
-                <div className="mk-empty">Nenhuma conta cadastrada. Clique em "Nova conta" para registrar seu primeiro CPF.</div>
+                <div className="mk-empty">Nenhum programa cadastrado. Clique em "Novo programa" para registrar o primeiro CPF.</div>
               ) : (
                 <div className="mk-card-list">
                   {accounts.map((a) => (
@@ -598,7 +583,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                           CPF: <b>{showCpf[a.id] ? a.cpf : maskCpf(a.cpf)}</b>
                           <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [a.id]: !s[a.id] }))}>{showCpf[a.id] ? <EyeOff size={13} /> : <Eye size={13} />}</button>
                         </div>
-                        <div className="mk-field">Custo médio: <b>{formatBRL(a.cpm)} / milheiro</b></div>
+                        <div className="mk-field">Tipo: <b>{inferTipo(a)}</b> · Custo médio: <b>{formatBRL(a.cpm)} / milheiro</b></div>
                       </div>
                       <div className="mk-ticket-side">
                         <div><div className="mk-field" style={{ textAlign: "right" }}>Saldo</div><div className="mk-mono" style={{ fontSize: 19, fontWeight: 700 }}>{Number(a.saldo).toLocaleString("pt-BR")}</div></div>
@@ -689,23 +674,27 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 }
 
 function AccountFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ programa: PROGRAMAS[0], titular: "", cpf: "", saldo: "", cpm: "", validade: "" });
+  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", cpf: "", saldo: "", cpm: "", validade: "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
-        <h3>Nova conta <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-        <div className="mk-form-row"><label>Programa</label>
-          <select value={form.programa} onChange={(e) => set("programa", e.target.value)}>{PROGRAMAS.map((p) => <option key={p} value={p}>{p}</option>)}</select>
+        <h3>Novo programa <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Tipo</label>
+          <select value={form.tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS_PROGRAMA.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+        </div>
+        <div className="mk-form-row"><label>Marca</label>
+          <select value={form.marca} onChange={(e) => set("marca", e.target.value)}>{MARCAS_POR_TIPO[form.tipo].map((m) => <option key={m} value={m}>{m}</option>)}</select>
         </div>
         <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
         <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
         <div className="mk-form-cols">
-          <div className="mk-form-row"><label>Saldo (milhas)</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
-          <div className="mk-form-row"><label>Custo / milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
+          <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
+          <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
         <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave(form)}>Salvar conta</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, cpf: form.cpf, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
       </div>
     </div>
   );
