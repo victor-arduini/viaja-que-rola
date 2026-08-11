@@ -41,23 +41,38 @@ function colorForPrograma(nome) {
   return "#2E6FF2";
 }
 
-function slugifyPrograma(nome) {
+// Valor de mercado estimado por milheiro, usado exclusivamente no card "Patrimônio Estimado".
+const VALOR_MILHEIRO_PATRIMONIO = {
+  azul: 20,
+  latam: 30,
+  livelo: 40,
+  atomos: 50,
+  esfera: 40,
+  iberia: 75,
+  smiles: 20,
+  tap: 50,
+  "all accor": 100,
+  accor: 100,
+  caixa: 40,
+  coopera: 40,
+  curtai: 40,
+  itau: 40,
+};
+
+function normalizePrograma(nome) {
   return (nome || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
-    .toLowerCase().trim().replace(/\s+/g, "-");
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
-// Tenta carregar a logo em /public/logos/<slug>.png — se não existir, volta pro ícone colorido.
-function ProgramaIcon({ nome }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return <span className="mk-programa-icon" style={{ background: colorForPrograma(nome) }}><Plane size={14} /></span>;
+function valorMilheiroPatrimonio(nome) {
+  const key = normalizePrograma(nome);
+  for (const marca in VALOR_MILHEIRO_PATRIMONIO) {
+    if (key.includes(marca)) return VALOR_MILHEIRO_PATRIMONIO[marca];
   }
-  return (
-    <span className="mk-programa-icon" style={{ background: "#fff", padding: 4 }}>
-      <img src={`/logos/${slugifyPrograma(nome)}.png`} alt={nome} style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={() => setFailed(true)} />
-    </span>
-  );
+  return 0;
 }
 
 // ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
@@ -208,8 +223,6 @@ const APP_CSS = `
   .mk-form-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
   .mk-form-row label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
   .mk-form-row input, .mk-form-row select, .mk-form-row textarea { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: var(--ink); }
-  .mk-form-row select { color-scheme: dark; }
-  .mk-form-row select option { background-color: #0F2049; color: #EAF1FF; }
   .mk-form-row input:disabled { opacity: 0.5; }
   .mk-form-row input::placeholder { color: rgba(234,241,255,0.35); }
   .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -388,7 +401,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("nome, cpf, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
@@ -426,18 +439,46 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const totals = useMemo(() => {
     const totalPontos = accounts.filter((a) => inferTipo(a) !== "Aéreo").reduce((s, a) => s + Number(a.saldo || 0), 0);
     const totalMilhas = accounts.filter((a) => inferTipo(a) === "Aéreo").reduce((s, a) => s + Number(a.saldo || 0), 0);
-    const patrimonioEstimado = accounts.reduce((s, a) => s + (Number(a.saldo || 0) / 1000) * Number(a.cpm || 0), 0);
+
+    const patrimonioEstimado = accounts.reduce((s, a) => {
+      const valorMilheiro = valorMilheiroPatrimonio(a.programa);
+      return s + (Number(a.saldo || 0) / 1000) * valorMilheiro;
+    }, 0);
+
     const economiaEmissoes = emissionsCalc.reduce((s, e) => s + e.economia, 0);
     const economiaReservas = reservasCalc.reduce((s, r) => s + r.economia, 0);
     const vencendo = accounts.filter((a) => a.validade).map((a) => ({ ...a, dias: Math.ceil((new Date(a.validade) - new Date()) / 86400000) })).filter((a) => a.dias <= 60).sort((a, b) => a.dias - b.dias);
-    const custoPlano = Number(profile?.plano_valor || 0);
+
+    const custoMilhasEPontos = accounts.reduce((s, a) => s + (Number(a.saldo || 0) / 1000) * Number(a.cpm || 0), 0);
     const custoAssinaturas = (db?.assinaturas || []).reduce((s, a) => s + Number(a.valorMensal || 0), 0);
+    const custoTaxasEmbarque = emissions.reduce((s, e) => s + Number(e.taxas || 0), 0);
+    const planoValor = Number(profile?.plano_valor || 0);
+    const planoParcelas = Number(profile?.plano_parcelas || 0);
+    const custoPlanoMensal = planoParcelas > 0 ? planoValor / planoParcelas : planoValor;
+    const custoTotal = custoMilhasEPontos + custoAssinaturas + custoTaxasEmbarque + custoPlanoMensal;
+
+    // Mantém a lógica anterior da Economia Total separada do novo card de Custo Total,
+    // evitando descontar novamente o custo do saldo atual de pontos/milhas.
     const custoCompras = (db?.compraDePontos || []).reduce((s, c) => s + Number(c.valorPago || 0), 0)
       + (db?.comprasBonificadas || []).reduce((s, c) => s + Number(c.valorPago || 0), 0);
-    const custoTotal = custoPlano + custoAssinaturas + custoCompras;
-    const economiaTotal = economiaEmissoes + economiaReservas - custoTotal;
-    return { totalPontos, totalMilhas, patrimonioEstimado, economiaEmissoes, economiaReservas, vencendo, custoTotal, economiaTotal };
-  }, [accounts, emissionsCalc, reservasCalc, profile, db]);
+    const custosParaEconomia = custoPlanoMensal + custoAssinaturas + custoCompras;
+    const economiaTotal = economiaEmissoes + economiaReservas - custosParaEconomia;
+
+    return {
+      totalPontos,
+      totalMilhas,
+      patrimonioEstimado,
+      economiaEmissoes,
+      economiaReservas,
+      vencendo,
+      custoMilhasEPontos,
+      custoAssinaturas,
+      custoTaxasEmbarque,
+      custoPlanoMensal,
+      custoTotal,
+      economiaTotal,
+    };
+  }, [accounts, emissions, emissionsCalc, reservasCalc, profile, db]);
 
   // Cards de programa, agrupando as contas por programa (estilo "Visão Geral das Contas")
   const porProgramaCards = useMemo(() => {
@@ -538,7 +579,12 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-stub">
                   <div className="mk-stub-label"><Award size={13} /> Patrimônio Estimado</div>
                   <div className="mk-stub-value">{formatBRL(totals.patrimonioEstimado)}</div>
-                  <div className="mk-stub-foot">Pontos + milhas, pelo custo médio</div>
+                  <div className="mk-stub-foot">Pontos + milhas, pelo valor estimado de cada programa</div>
+                </div>
+                <div className="mk-stub">
+                  <div className="mk-stub-label"><Wallet size={13} /> Custo Total</div>
+                  <div className="mk-stub-value">{formatBRL(totals.custoTotal)}</div>
+                  <div className="mk-stub-foot">Milhas/pontos + clubes + taxas + mensalidade do plano</div>
                 </div>
                 <div className="mk-stub">
                   <div className="mk-stub-label"><TrendingUp size={13} /> Economia Total</div>
@@ -556,7 +602,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-programa-card" key={p.programa}>
                       <div className="mk-programa-head">
                         <span className="mk-programa-name">{p.programa}</span>
-                        <ProgramaIcon nome={p.programa} />
+                        <span className="mk-programa-icon" style={{ background: colorForPrograma(p.programa) }}><Plane size={14} /></span>
                       </div>
                       <div className="mk-field">Saldo Atual</div>
                       <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
@@ -688,14 +734,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         </div>
       </div>
 
-      {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount({ ...d, titular: profile?.nome || userEmail, cpf: profile?.cpf || "" }); setShowAccountForm(false); }} />}
+      {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount(d); setShowAccountForm(false); }} />}
       {showEmissionForm && <EmissionFormModal accounts={accounts} onClose={() => setShowEmissionForm(false)} onSave={(d) => { addEmission(d); setShowEmissionForm(false); }} />}
     </div>
   );
 }
 
 function AccountFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], saldo: "", cpm: "" });
+  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", cpf: "", saldo: "", cpm: "", validade: "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
   return (
@@ -708,11 +754,14 @@ function AccountFormModal({ onClose, onSave }) {
         <div className="mk-form-row"><label>Marca</label>
           <select value={form.marca} onChange={(e) => set("marca", e.target.value)}>{MARCAS_POR_TIPO[form.tipo].map((m) => <option key={m} value={m}>{m}</option>)}</select>
         </div>
+        <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
+        <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, saldo: form.saldo, cpm: form.cpm })}>Salvar programa</button>
+        <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, cpf: form.cpf, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
       </div>
     </div>
   );
