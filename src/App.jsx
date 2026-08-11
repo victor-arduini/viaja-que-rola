@@ -4,7 +4,7 @@ import {
   Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
-  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu
+  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel
 } from "lucide-react";
 
 const TIPOS_PROGRAMA = ["Aéreo", "Cartão", "Hotel"];
@@ -26,6 +26,7 @@ function inferTipo(a) {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const onlyDigits = (s) => (s || "").replace(/\D/g, "");
 const formatBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const formatNegativeBRL = (v) => `- ${formatBRL(Math.abs(Number(v) || 0))}`;
 const formatDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
 
@@ -75,13 +76,52 @@ function valorMilheiroPatrimonio(nome) {
   return 0;
 }
 
+function monthlyOccurrences(startIso, endIso) {
+  if (!startIso || !endIso) return 0;
+  const start = new Date(`${startIso}T12:00:00`);
+  const end = new Date(`${endIso}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  let count = 0;
+  let y = start.getFullYear();
+  let m = start.getMonth();
+  const day = start.getDate();
+  while (count < 600) {
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const occurrence = new Date(y, m, Math.min(day, lastDay), 12, 0, 0);
+    if (occurrence > end) break;
+    count += 1;
+    m += 1;
+    if (m > 11) { m = 0; y += 1; }
+  }
+  return count;
+}
+
+function elapsedSubscriptionLabel(startIso, endIso) {
+  if (!startIso) return "—";
+  const start = new Date(`${startIso}T12:00:00`);
+  const today = new Date();
+  const end = endIso ? new Date(`${endIso}T12:00:00`) : today;
+  const effectiveEnd = end < today ? end : today;
+  if (effectiveEnd < start) return "Ainda não iniciou";
+  let months = (effectiveEnd.getFullYear() - start.getFullYear()) * 12 + effectiveEnd.getMonth() - start.getMonth();
+  if (effectiveEnd.getDate() < start.getDate()) months -= 1;
+  months = Math.max(0, months);
+  if (months < 1) return "Menos de 1 mês";
+  if (months < 12) return `${months} ${months === 1 ? "mês" : "meses"}`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return `${years} ${years === 1 ? "ano" : "anos"}${rest ? ` e ${rest} ${rest === 1 ? "mês" : "meses"}` : ""}`;
+}
+
 // ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
 const MODULES = [
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard, fields: [
-      { key: "nome", label: "Assinatura", type: "text" },
       { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
+      { key: "milhasMes", label: "Milhas por mês", type: "number" },
       { key: "valorMensal", label: "Valor mensal", type: "currency" },
+      { key: "inicio", label: "Início", type: "date" },
       { key: "vencimento", label: "Vencimento", type: "date" },
+      { key: "descricao", label: "Descrição", type: "text", optional: true },
   ]},
   { key: "passageiros", label: "Passageiros", icon: User, fields: [
       { key: "nome", label: "Nome", type: "text" },
@@ -141,20 +181,18 @@ const MODULES = [
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "programas", label: "Programas", icon: Wallet },
+  { key: "proximasViagens", label: "Planejamento de Viagens", icon: MapPin },
   { key: "emissoes", label: "Emissões", icon: PlaneTakeoff },
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard },
-  { key: "passageiros", label: "Passageiros", icon: User },
-  { key: "reservas", label: "Reservas", icon: CalendarCheck },
+  { key: "reservas", label: "Reservas de Hotel", icon: Hotel },
   { key: "comprasBonificadas", label: "Compras Bonificadas", icon: Gift },
   { key: "compraDePontos", label: "Compra de Pontos", icon: ShoppingCart },
   { key: "creditosCartao", label: "Créditos de Cartão", icon: BadgePercent },
   { key: "transferencias", label: "Transferências", icon: ArrowLeftRight },
   { key: "vendasDeMilhas", label: "Vendas de Milhas", icon: DollarSign },
-  { key: "resgates", label: "Resgates", icon: Ticket },
-  { key: "cpfs", label: "Controle de CPFs", icon: ShieldCheck },
 ];
 
-const EMPTY_DB = { accounts: [], emissions: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
 
 // ---------- CSS compartilhado entre o painel do cliente e o do admin ----------
 const APP_CSS = `
@@ -223,6 +261,11 @@ const APP_CSS = `
   .mk-form-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
   .mk-form-row label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
   .mk-form-row input, .mk-form-row select, .mk-form-row textarea { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: var(--ink); }
+  .mk-form-row select option { background: #0F2049; color: #EAF1FF; }
+  .mk-form-row select:focus, .mk-form-row input:focus, .mk-form-row textarea:focus { outline: 2px solid rgba(94,208,255,0.45); outline-offset: 1px; border-color: var(--accent-2); }
+  .mk-check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 4px 0 10px; }
+  .mk-check-row input { width: auto; margin: 0; accent-color: var(--accent); }
+  .mk-negative { color: var(--red) !important; }
   .mk-form-row input:disabled { opacity: 0.5; }
   .mk-form-row input::placeholder { color: rgba(234,241,255,0.35); }
   .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -285,7 +328,10 @@ function renderCell(field, row, allData) {
     const found = (allData[field.relationTo] || []).find((r) => r.id === v);
     return found ? found[field.labelField] : "—";
   }
-  if (field.type === "currency") return formatBRL(v);
+  if (field.type === "currency") {
+    const num = Number(v) || 0;
+    return <span className={num < 0 ? "mk-negative" : ""}>{formatBRL(num)}</span>;
+  }
   if (field.type === "date") return formatDate(v);
   if (field.type === "number") return (Number(v) || 0).toLocaleString("pt-BR");
   return v || "—";
@@ -296,7 +342,7 @@ function DataModule({ schema, data, setData, allData }) {
   const [editing, setEditing] = useState(null);
 
   const save = (values) => {
-    if (editing) setData((prev) => prev.map((d) => (d.id === editing.id ? { ...values, id: editing.id } : d)));
+    if (editing) setData((prev) => prev.map((d) => (d.id === editing.id ? { ...editing, ...values, id: editing.id } : d)));
     else setData((prev) => [...prev, { ...values, id: uid() }]);
     setShowForm(false); setEditing(null);
   };
@@ -306,7 +352,7 @@ function DataModule({ schema, data, setData, allData }) {
     <>
       <div className="mk-section-title">
         <h2>{schema.label}</h2>
-        <button className="mk-btn" onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={15} /> Nova entrada</button>
+        <button className="mk-btn" onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={15} /> {schema.key === "assinaturas" ? "Nova Assinatura" : "Nova entrada"}</button>
       </div>
       {data.length === 0 ? (
         <div className="mk-empty">Nenhum registro em {schema.label.toLowerCase()} ainda.</div>
@@ -343,7 +389,8 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
   }, {});
   const [form, setForm] = useState(defaults);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const requiredOk = schema.fields.filter((f) => f.type === "text").every((f) => !!form[f.key]) || schema.fields.every((f) => f.type !== "text");
+  const requiredTextFields = schema.fields.filter((f) => f.type === "text" && !f.optional);
+  const requiredOk = requiredTextFields.length === 0 || requiredTextFields.every((f) => !!form[f.key]);
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
@@ -393,6 +440,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showCpf, setShowCpf] = useState({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showEmissionForm, setShowEmissionForm] = useState(false);
+  const [showTripForm, setShowTripForm] = useState(false);
+  const [showHotelForm, setShowHotelForm] = useState(false);
+  const [showCreditCardForm, setShowCreditCardForm] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -401,7 +451,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("nome, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
@@ -416,11 +466,49 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     return () => clearTimeout(timeout);
   }, [db, userId]);
 
+  useEffect(() => {
+    if (!db || !(db.assinaturas || []).length) return;
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    let changed = false;
+    let nextAccounts = [...(db.accounts || [])];
+
+    const nextAssinaturas = (db.assinaturas || []).map((assinatura) => {
+      const milhasMes = Number(assinatura.milhasMes || 0);
+      const valorMensal = Number(assinatura.valorMensal || 0);
+      if (!assinatura.programaId || !assinatura.inicio || milhasMes <= 0) return assinatura;
+
+      const limite = assinatura.vencimento && assinatura.vencimento < todayIso ? assinatura.vencimento : todayIso;
+      const devidos = monthlyOccurrences(assinatura.inicio, limite);
+      const creditados = Number(assinatura.creditosGerados || 0);
+      const novosCreditos = Math.max(0, devidos - creditados);
+      if (!novosCreditos) return assinatura;
+
+      const accountIndex = nextAccounts.findIndex((a) => a.id === assinatura.programaId);
+      if (accountIndex < 0) return assinatura;
+
+      const conta = nextAccounts[accountIndex];
+      const saldoAnterior = Number(conta.saldo || 0);
+      const custoAnterior = (saldoAnterior / 1000) * Number(conta.cpm || 0);
+      const milhasAdicionadas = novosCreditos * milhasMes;
+      const custoAdicionado = novosCreditos * valorMensal;
+      const novoSaldo = saldoAnterior + milhasAdicionadas;
+      const novoCpm = novoSaldo > 0 ? ((custoAnterior + custoAdicionado) / novoSaldo) * 1000 : Number(conta.cpm || 0);
+
+      nextAccounts[accountIndex] = { ...conta, saldo: novoSaldo, cpm: Number(novoCpm.toFixed(4)) };
+      changed = true;
+      return { ...assinatura, creditosGerados: devidos, ultimoCredito: limite };
+    });
+
+    if (changed) setDb((prev) => ({ ...prev, accounts: nextAccounts, assinaturas: nextAssinaturas }));
+  }, [db]);
+
   const updateSlice = (key) => (updater) =>
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
 
-  const accounts = db?.accounts || [], emissions = db?.emissions || [];
-  const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions");
+  const accounts = db?.accounts || [], emissions = db?.emissions || [], proximasViagens = db?.proximasViagens || [];
+  const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions"), setProximasViagens = updateSlice("proximasViagens");
+  const displayName = profile?.nome?.trim() || userEmail;
 
   const emissionsCalc = useMemo(() => emissions.map((em) => {
     const conta = accounts.find((a) => a.id === em.accountId);
@@ -432,9 +520,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     return { ...em, conta, custoMilhas, custoTotal, economia, pct };
   }).sort((a, b) => (b.data || "").localeCompare(a.data || "")), [emissions, accounts]);
 
-  const reservasCalc = useMemo(() => (db?.reservas || []).map((r) => ({
-    ...r, economia: Number(r.valorMercado || 0) - Number(r.valorPago || 0),
-  })), [db]);
+  const reservasCalc = useMemo(() => (db?.reservas || []).map((r) => {
+    const conta = accounts.find((a) => a.id === r.programaId);
+    const cpm = conta ? Number(conta.cpm || 0) : Number(r.cpmUsado || 0);
+    const custoPontos = r.valorPago != null && r.programaId == null
+      ? Number(r.valorPago || 0)
+      : (Number(r.pontosMilhas || 0) / 1000) * cpm;
+    const economia = Number(r.valorMercado || 0) - custoPontos;
+    return { ...r, conta, cpm, custoPontos, economia };
+  }), [db, accounts]);
 
   const totals = useMemo(() => {
     const totalPontos = accounts.filter((a) => inferTipo(a) !== "Aéreo").reduce((s, a) => s + Number(a.saldo || 0), 0);
@@ -510,10 +604,67 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
   const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
   const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
-  const addEmission = (data) => setEmissions((prev) => [...prev, { id: uid(), ...data }]);
-  const removeEmission = (id) => setEmissions((prev) => prev.filter((e) => e.id !== id));
+  const addEmission = (data) => {
+    setDb((prev) => {
+      const shouldDebit = data.origemMilhas === "saldo";
+      const nextAccounts = shouldDebit ? (prev.accounts || []).map((a) => a.id === data.accountId
+        ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.milhas || 0)) }
+        : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, emissions: [...(prev.emissions || []), { id: uid(), ...data, saldoDebitado: shouldDebit }] };
+    });
+  };
+  const removeEmission = (id) => {
+    setDb((prev) => {
+      const em = (prev.emissions || []).find((e) => e.id === id);
+      const nextAccounts = em?.saldoDebitado ? (prev.accounts || []).map((a) => a.id === em.accountId
+        ? { ...a, saldo: Number(a.saldo || 0) + Number(em.milhas || 0) }
+        : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, emissions: (prev.emissions || []).filter((e) => e.id !== id) };
+    });
+  };
+  const addTrip = (data) => setProximasViagens((prev) => [...prev, { id: uid(), ...data }]);
+  const removeTrip = (id) => setProximasViagens((prev) => prev.filter((v) => v.id !== id));
+  const addHotelReservation = (data) => {
+    setDb((prev) => {
+      const shouldDebit = data.origemMilhas === "saldo";
+      const nextAccounts = shouldDebit ? (prev.accounts || []).map((a) => a.id === data.programaId
+        ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontosMilhas || 0)) }
+        : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, reservas: [...(prev.reservas || []), { id: uid(), ...data, saldoDebitado: shouldDebit }] };
+    });
+  };
+  const removeHotelReservation = (id) => {
+    setDb((prev) => {
+      const r = (prev.reservas || []).find((x) => x.id === id);
+      const nextAccounts = r?.saldoDebitado ? (prev.accounts || []).map((a) => a.id === r.programaId
+        ? { ...a, saldo: Number(a.saldo || 0) + Number(r.pontosMilhas || 0) }
+        : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, reservas: (prev.reservas || []).filter((x) => x.id !== id) };
+    });
+  };
+  const addCreditCard = (data) => {
+    setDb((prev) => ({
+      ...prev,
+      accounts: (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontosAcumulados || 0) } : a),
+      creditosCartao: [...(prev.creditosCartao || []), { id: uid(), ...data, saldoCreditado: true }],
+    }));
+  };
+  const removeCreditCard = (id) => {
+    setDb((prev) => {
+      const c = (prev.creditosCartao || []).find((x) => x.id === id);
+      const nextAccounts = c?.saldoCreditado ? (prev.accounts || []).map((a) => a.id === c.programaId
+        ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(c.pontosAcumulados || 0)) }
+        : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, creditosCartao: (prev.creditosCartao || []).filter((x) => x.id !== id) };
+    });
+  };
+  const tripsSorted = [...proximasViagens].sort((a, b) => {
+    if (a.semData && !b.semData) return 1;
+    if (!a.semData && b.semData) return -1;
+    return (a.data || "9999-12-31").localeCompare(b.data || "9999-12-31");
+  });
 
-  const activeModule = MODULES.find((m) => m.key === tab);
+  const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao"].includes(m.key));
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
 
   if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
@@ -553,7 +704,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
               <button className="mk-menu-toggle" onClick={() => setSidebarOpen(true)}><Menu size={18} /></button>
               <h2>{currentLabel}</h2>
             </div>
-            <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{userEmail}</span></div>
+            <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{displayName}</span></div>
           </div>
 
           {impersonating && (
@@ -583,7 +734,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 </div>
                 <div className="mk-stub">
                   <div className="mk-stub-label"><Wallet size={13} /> Custo Total</div>
-                  <div className="mk-stub-value">{formatBRL(totals.custoTotal)}</div>
+                  <div className="mk-stub-value mk-negative">{formatNegativeBRL(totals.custoTotal)}</div>
                   <div className="mk-stub-foot">Milhas/pontos + clubes + taxas + mensalidade do plano</div>
                 </div>
                 <div className="mk-stub">
@@ -636,7 +787,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <button className="mk-btn" onClick={() => setShowAccountForm(true)}><Plus size={15} /> Novo programa</button>
               </div>
               {accounts.length === 0 ? (
-                <div className="mk-empty">Nenhum programa cadastrado. Clique em "Novo programa" para registrar o primeiro CPF.</div>
+                <div className="mk-empty">Nenhum programa cadastrado. Clique em "Novo programa" para começar.</div>
               ) : (
                 <div className="mk-card-list">
                   {accounts.map((a) => (
@@ -646,15 +797,48 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                           <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span></span>
                           <button className="mk-iconbtn" onClick={() => removeAccount(a.id)}><Trash2 size={15} /></button>
                         </div>
-                        <div className="mk-field" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
-                          CPF: <b>{showCpf[a.id] ? a.cpf : maskCpf(a.cpf)}</b>
-                          <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [a.id]: !s[a.id] }))}>{showCpf[a.id] ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-                        </div>
+                        {a.cpf && (
+                          <div className="mk-field" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+                            CPF: <b>{showCpf[a.id] ? a.cpf : maskCpf(a.cpf)}</b>
+                            <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [a.id]: !s[a.id] }))}>{showCpf[a.id] ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+                          </div>
+                        )}
                         <div className="mk-field">Tipo: <b>{inferTipo(a)}</b> · Custo médio: <b>{formatBRL(a.cpm)} / milheiro</b></div>
                       </div>
                       <div className="mk-ticket-side">
                         <div><div className="mk-field" style={{ textAlign: "right" }}>Saldo</div><div className="mk-mono" style={{ fontSize: 19, fontWeight: 700 }}>{Number(a.saldo).toLocaleString("pt-BR")}</div></div>
                         <div className="mk-field">Validade: {formatDate(a.validade)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "proximasViagens" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Planejamento de Viagens</h2>
+                <button className="mk-btn" onClick={() => setShowTripForm(true)}><Plus size={15} /> Nova Viagem</button>
+              </div>
+              {tripsSorted.length === 0 ? (
+                <div className="mk-empty">Nenhum planejamento de viagem cadastrado.</div>
+              ) : (
+                <div className="mk-card-list">
+                  {tripsSorted.map((v) => (
+                    <div className="mk-ticket" key={v.id}>
+                      <div className="mk-ticket-main">
+                        <div className="mk-ticket-row">
+                          <span className="mk-ticket-title"><MapPin size={15} /> {v.destino}</span>
+                          <button className="mk-iconbtn" onClick={() => removeTrip(v.id)}><Trash2 size={15} /></button>
+                        </div>
+                        <div className="mk-field">Partida: <b>{v.partida || "—"}</b> · Passageiros: <b>{Number(v.passageiros || 1)}</b></div>
+                        <div className="mk-field" style={{ marginTop: 5 }}>Data: <b>{v.semData ? "Sem data definida" : formatDate(v.data)}</b>{!v.semData && Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</div>
+                      </div>
+                      <div className="mk-ticket-side">
+                        <CalendarCheck size={18} />
+                        <div className="mk-field">{v.semData ? "A definir" : formatDate(v.data)}</div>
                       </div>
                     </div>
                   ))}
@@ -682,8 +866,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                           <span className="mk-ticket-title"><Plane size={15} /> {e.destino}<span className="mk-badge">{e.conta ? e.conta.programa : "conta removida"}</span></span>
                           <button className="mk-iconbtn" onClick={() => removeEmission(e.id)}><Trash2 size={15} /></button>
                         </div>
-                        <div className="mk-field">{formatDate(e.data)} · {Number(e.milhas).toLocaleString("pt-BR")} milhas · taxas {formatBRL(e.taxas)}</div>
-                        <div className="mk-field">Custo estimado: <b>{formatBRL(e.custoTotal)}</b> · Valor de mercado: <b>{formatBRL(e.valorMercado)}</b></div>
+                        <div className="mk-field">Origem: <b>{e.origemMilhas === "saldo" ? "Saldo em Conta" : "Resgate Anterior"}</b> · Resgate: <b>{formatDate(e.dataResgate || e.data)}</b></div>
+                        <div className="mk-field">Ida: <b>{formatDate(e.dataIda)}</b> · Volta: <b>{formatDate(e.dataVolta)}</b> · {Number(e.milhas).toLocaleString("pt-BR")} milhas</div>
+                        <div className="mk-field">Taxas: <b className="mk-negative">{formatNegativeBRL(e.taxas)}</b> · Custo estimado: <b className="mk-negative">{formatNegativeBRL(e.custoTotal)}</b> · Valor de mercado: <b>{formatBRL(e.valorMercado)}</b></div>
                       </div>
                       <div className="mk-ticket-side">
                         <div className="mk-field" style={{ textAlign: "right" }}>Economia</div>
@@ -697,33 +882,42 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             </>
           )}
 
-          {tab === "cpfs" && (
+
+
+          {tab === "reservas" && (
             <>
-              <div className="mk-section-title"><h2>Controle de CPFs</h2></div>
-              {cpfGroups.length === 0 ? (
-                <div className="mk-empty">Nenhum CPF registrado ainda — cadastre contas em "Contas" para vê-los aqui.</div>
+              <div className="mk-section-title">
+                <h2>Reservas de Hotel</h2>
+                <button className="mk-btn" onClick={() => setShowHotelForm(true)} disabled={accounts.length === 0}><Plus size={15} /> Nova Reserva</button>
+              </div>
+              {accounts.length === 0 ? <div className="mk-empty">Cadastre um programa primeiro para registrar reservas de hotel.</div> : reservasCalc.length === 0 ? (
+                <div className="mk-empty">Nenhuma reserva de hotel registrada ainda.</div>
               ) : (
-                <div className="mk-table-wrap">
-                  <table className="mk-table">
-                    <thead><tr><th>CPF</th><th>Titular</th><th>Contas</th><th>Programas</th><th>Saldo total</th><th>Próxima validade</th></tr></thead>
-                    <tbody>
-                      {cpfGroups.map((g) => {
-                        const saldoTotal = g.contas.reduce((s, c) => s + Number(c.saldo || 0), 0);
-                        const validades = g.contas.filter((c) => c.validade).map((c) => c.validade).sort();
-                        return (
-                          <tr key={g.cpf}>
-                            <td>{showCpf[g.cpf] ? g.cpf : maskCpf(g.cpf)} <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [g.cpf]: !s[g.cpf] }))}>{showCpf[g.cpf] ? <EyeOff size={12} /> : <Eye size={12} />}</button></td>
-                            <td>{g.titular}</td>
-                            <td>{g.contas.length}</td>
-                            <td>{[...new Set(g.contas.map((c) => c.programa))].join(", ")}</td>
-                            <td>{saldoTotal.toLocaleString("pt-BR")}</td>
-                            <td>{validades[0] ? formatDate(validades[0]) : "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <div className="mk-card-list">{reservasCalc.map((r) => (
+                  <div className="mk-ticket" key={r.id}>
+                    <div className="mk-ticket-main">
+                      <div className="mk-ticket-row"><span className="mk-ticket-title"><Hotel size={15} /> {r.hotel || r.destino || "Hotel"}</span><button className="mk-iconbtn" onClick={() => removeHotelReservation(r.id)}><Trash2 size={15} /></button></div>
+                      <div className="mk-field">Origem: <b>{r.origemMilhas === "saldo" ? (r.conta?.programa || "Programa removido") : `Resgate Anterior${r.conta?.programa ? ` · ${r.conta.programa}` : ""}`}</b></div>
+                      <div className="mk-field">Pontos/Milhas usadas: <b>{Number(r.pontosMilhas || 0).toLocaleString("pt-BR")}</b> · Valor de mercado: <b>{formatBRL(r.valorMercado)}</b></div>
+                      <div className="mk-field">Valor pago estimado: <b className="mk-negative">{formatNegativeBRL(r.custoPontos)}</b></div>
+                    </div>
+                    <div className="mk-ticket-side"><div className="mk-field">Economia</div><div className="mk-mono" style={{ fontSize: 18, fontWeight: 700, color: r.economia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(r.economia)}</div></div>
+                  </div>
+                ))}</div>
+              )}
+            </>
+          )}
+
+          {tab === "creditosCartao" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Créditos de Cartão</h2>
+                <button className="mk-btn" onClick={() => setShowCreditCardForm(true)} disabled={accounts.filter((a) => inferTipo(a) !== "Hotel").length === 0}><Plus size={15} /> Novo Crédito</button>
+              </div>
+              {(db.creditosCartao || []).length === 0 ? <div className="mk-empty">Nenhum crédito de cartão registrado ainda.</div> : (
+                <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Programa ou Co-Branded</th><th>Pontos por R$</th><th>Fatura do mês</th><th>Pontos acumulados</th><th></th></tr></thead><tbody>
+                  {(db.creditosCartao || []).map((c) => { const conta = accounts.find((a) => a.id === c.programaId); return <tr key={c.id}><td>{conta?.programa || c.cartao || "—"}</td><td>{Number(c.pontosPorReal || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(c.faturaMes)}</td><td>{Number(c.pontosAcumulados || 0).toLocaleString("pt-BR")}</td><td><button className="mk-iconbtn" onClick={() => removeCreditCard(c.id)}><Trash2 size={14} /></button></td></tr>; })}
+                </tbody></table></div>
               )}
             </>
           )}
@@ -736,12 +930,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
       {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount(d); setShowAccountForm(false); }} />}
       {showEmissionForm && <EmissionFormModal accounts={accounts} onClose={() => setShowEmissionForm(false)} onSave={(d) => { addEmission(d); setShowEmissionForm(false); }} />}
+      {showTripForm && <TripFormModal onClose={() => setShowTripForm(false)} onSave={(d) => { addTrip(d); setShowTripForm(false); }} />}
+      {showHotelForm && <HotelReservationFormModal accounts={accounts} onClose={() => setShowHotelForm(false)} onSave={(d) => { addHotelReservation(d); setShowHotelForm(false); }} />}
+      {showCreditCardForm && <CreditCardFormModal accounts={accounts} onClose={() => setShowCreditCardForm(false)} onSave={(d) => { addCreditCard(d); setShowCreditCardForm(false); }} />}
     </div>
   );
 }
 
 function AccountFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", cpf: "", saldo: "", cpm: "", validade: "" });
+  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", saldo: "", cpm: "", validade: "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
   return (
@@ -755,81 +952,228 @@ function AccountFormModal({ onClose, onSave }) {
           <select value={form.marca} onChange={(e) => set("marca", e.target.value)}>{MARCAS_POR_TIPO[form.tipo].map((m) => <option key={m} value={m}>{m}</option>)}</select>
         </div>
         <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
-        <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
         <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, cpf: form.cpf, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
+      </div>
+    </div>
+  );
+}
+
+
+function TripFormModal({ onClose, onSave }) {
+  const [form, setForm] = useState({ destino: "", partida: "", semData: false, data: "", flexibilidade: "0", passageiros: "1" });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const canSave = form.destino && form.partida && (form.semData || form.data);
+
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
+        <h3>Nova Viagem <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: Lisboa" /></div>
+        <div className="mk-form-row"><label>Partida</label><input value={form.partida} onChange={(e) => set("partida", e.target.value)} placeholder="Ex.: Belo Horizonte" /></div>
+        <label className="mk-check-row"><input type="checkbox" checked={form.semData} onChange={(e) => set("semData", e.target.checked)} /> Sem data definida</label>
+        {!form.semData && (
+          <>
+            <div className="mk-form-row"><label>Data da viagem</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+            <div className="mk-form-row"><label>Flexibilidade</label>
+              <select value={form.flexibilidade} onChange={(e) => set("flexibilidade", e.target.value)}>
+                <option value="0">Sem flexibilidade</option>
+                <option value="3">Flexibilidade +3</option>
+                <option value="7">Flexibilidade +7</option>
+              </select>
+            </div>
+          </>
+        )}
+        <div className="mk-form-row"><label>Número de passageiros</label>
+          <select value={form.passageiros} onChange={(e) => set("passageiros", e.target.value)}>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, data: form.semData ? "" : form.data, flexibilidade: form.semData ? "0" : form.flexibilidade })}>Salvar viagem</button>
       </div>
     </div>
   );
 }
 
 function EmissionFormModal({ accounts, onClose, onSave }) {
-  const [form, setForm] = useState({ accountId: accounts[0]?.id || "", data: "", destino: "", milhas: "", taxas: "", valorMercado: "" });
+  const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
+  const [form, setForm] = useState({ origemMilhas: "saldo", accountId: eligibleAccounts[0]?.id || "", dataResgate: "", dataIda: "", dataVolta: "", destino: "", milhas: "", taxas: "", valorMercado: "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const conta = accounts.find((a) => a.id === form.accountId);
+  const conta = eligibleAccounts.find((a) => a.id === form.accountId);
   const cpm = conta ? Number(conta.cpm) : 0;
   const custoMilhas = (Number(form.milhas || 0) / 1000) * cpm;
   const custoTotal = custoMilhas + Number(form.taxas || 0);
   const economia = Number(form.valorMercado || 0) - custoTotal;
+  const saldoInsuficiente = form.origemMilhas === "saldo" && conta && Number(form.milhas || 0) > Number(conta.saldo || 0);
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>Nova emissão <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-        <div className="mk-form-row"><label>Conta</label>
-          <select value={form.accountId} onChange={(e) => set("accountId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — {a.titular}</option>)}</select>
-        </div>
-        <div className="mk-form-cols">
-          <div className="mk-form-row"><label>Data</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
-          <div className="mk-form-row"><label>Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="GRU → LIS" /></div>
-        </div>
-        <div className="mk-form-cols">
-          <div className="mk-form-row"><label>Milhas usadas</label><input type="number" value={form.milhas} onChange={(e) => set("milhas", e.target.value)} placeholder="80000" /></div>
-          <div className="mk-form-row"><label>Taxas pagas (R$)</label><input type="number" step="0.01" value={form.taxas} onChange={(e) => set("taxas", e.target.value)} placeholder="350" /></div>
-        </div>
+        <div className="mk-form-row"><label>Origem das milhas</label><select value={form.origemMilhas} onChange={(e) => set("origemMilhas", e.target.value)}><option value="resgate">Resgate Anterior</option><option value="saldo">Saldo em Conta</option></select></div>
+        <div className="mk-form-row"><label>Programa</label><select value={form.accountId} onChange={(e) => set("accountId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
+        <div className="mk-form-row"><label>Data do Resgate</label><input type="date" value={form.dataResgate} onChange={(e) => set("dataResgate", e.target.value)} /></div>
+        <div className="mk-form-row"><label>Embarque-Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: CNF → LIS" /></div>
+        <div className="mk-form-cols"><div className="mk-form-row"><label>Data da Ida</label><input type="date" value={form.dataIda} onChange={(e) => set("dataIda", e.target.value)} /></div><div className="mk-form-row"><label>Data da Volta</label><input type="date" value={form.dataVolta} onChange={(e) => set("dataVolta", e.target.value)} /></div></div>
+        <div className="mk-form-cols"><div className="mk-form-row"><label>Milhas usadas</label><input type="number" value={form.milhas} onChange={(e) => set("milhas", e.target.value)} placeholder="80000" /></div><div className="mk-form-row"><label>Taxas pagas (R$)</label><input type="number" step="0.01" value={form.taxas} onChange={(e) => set("taxas", e.target.value)} placeholder="350" /></div></div>
         <div className="mk-form-row"><label>Valor de mercado da passagem (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="6200" /></div>
-        {form.milhas && form.valorMercado && (
-          <div className="mk-preview">
-            Custo estimado (milhas + taxas): <b>{formatBRL(custoTotal)}</b><br />
-            Economia: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span>
-          </div>
-        )}
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.destino || !form.milhas || !form.valorMercado} onClick={() => onSave(form)}>Salvar emissão</button>
+        {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente nesse programa para debitar {Number(form.milhas || 0).toLocaleString("pt-BR")} milhas.</div>}
+        {form.milhas && form.valorMercado && <div className="mk-preview">Custo das milhas: <b className="mk-negative">{formatNegativeBRL(custoMilhas)}</b><br />Taxas: <b className="mk-negative">{formatNegativeBRL(form.taxas)}</b><br />Economia: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span>{form.origemMilhas === "resgate" && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa, mas o saldo não será debitado novamente.</span></>}</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave(form)}>Salvar emissão</button>
       </div>
     </div>
   );
 }
 
+function HotelReservationFormModal({ accounts, onClose, onSave }) {
+  const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
+  const [form, setForm] = useState({
+    hotel: "",
+    origemPrograma: eligibleAccounts[0]?.id || "resgate",
+    programaResgateId: eligibleAccounts[0]?.id || "",
+    pontosMilhas: "",
+    valorMercado: "",
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const isResgateAnterior = form.origemPrograma === "resgate";
+  const programaId = isResgateAnterior ? form.programaResgateId : form.origemPrograma;
+  const conta = eligibleAccounts.find((a) => a.id === programaId);
+  const custoPontos = (Number(form.pontosMilhas || 0) / 1000) * Number(conta?.cpm || 0);
+  const economia = Number(form.valorMercado || 0) - custoPontos;
+  const saldoInsuficiente = !isResgateAnterior && conta && Number(form.pontosMilhas || 0) > Number(conta.saldo || 0);
+
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Nova Reserva de Hotel <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+
+        <div className="mk-form-row">
+          <label>Hotel</label>
+          <textarea rows="3" value={form.hotel} onChange={(e) => set("hotel", e.target.value)} placeholder="Descrição / comentário da reserva" />
+        </div>
+
+        <div className="mk-form-row">
+          <label>Pontos/Milhas usadas</label>
+          <select value={form.origemPrograma} onChange={(e) => set("origemPrograma", e.target.value)}>
+            <option value="resgate">Resgate Anterior</option>
+            {eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}
+          </select>
+          {isResgateAnterior && (
+            <select value={form.programaResgateId} onChange={(e) => set("programaResgateId", e.target.value)}>
+              <option value="">Programa usado no resgate anterior</option>
+              {eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — CPM {formatBRL(a.cpm)}</option>)}
+            </select>
+          )}
+          <input type="number" value={form.pontosMilhas} onChange={(e) => set("pontosMilhas", e.target.value)} placeholder="Quantidade de pontos/milhas" />
+        </div>
+
+        <div className="mk-form-row">
+          <label>Valor de mercado (R$)</label>
+          <input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} />
+        </div>
+
+        {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente para esse resgate.</div>}
+        {form.pontosMilhas && form.valorMercado && conta && (
+          <div className="mk-preview">
+            Valor pago estimado pelo milheiro: <b className="mk-negative">{formatNegativeBRL(custoPontos)}</b><br />
+            Economia: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span>
+            {isResgateAnterior && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa escolhido, mas o saldo não será debitado novamente.</span></>}
+          </div>
+        )}
+
+        <button
+          className="mk-btn"
+          style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
+          disabled={!form.hotel || !programaId || !form.pontosMilhas || !form.valorMercado || saldoInsuficiente}
+          onClick={() => onSave({
+            hotel: form.hotel,
+            origemMilhas: isResgateAnterior ? "resgate" : "saldo",
+            programaId,
+            pontosMilhas: form.pontosMilhas,
+            valorMercado: form.valorMercado,
+            cpmUsado: Number(conta?.cpm || 0),
+          })}
+        >
+          Salvar reserva
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CreditCardFormModal({ accounts, onClose, onSave }) {
+  const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
+  const [form, setForm] = useState({ programaId: eligibleAccounts[0]?.id || "", pontosPorReal: "", faturaMes: "", pontosAcumulados: "" });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  return <div className="mk-modal-backdrop" onClick={onClose}><div className="mk-modal" onClick={(e) => e.stopPropagation()}><h3>Novo Crédito de Cartão <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+    <div className="mk-form-row"><label>Programa ou Co-Branded</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — {inferTipo(a)}</option>)}</select></div>
+    <div className="mk-form-row"><label>Pontos por R$</label><input type="number" step="0.01" value={form.pontosPorReal} onChange={(e) => set("pontosPorReal", e.target.value)} /></div>
+    <div className="mk-form-row"><label>Fatura do mês (R$)</label><input type="number" step="0.01" value={form.faturaMes} onChange={(e) => set("faturaMes", e.target.value)} /></div>
+    <div className="mk-form-row"><label>Pontos acumulados</label><input type="number" value={form.pontosAcumulados} onChange={(e) => set("pontosAcumulados", e.target.value)} /></div>
+    <div className="mk-preview">Ao salvar, <b>{Number(form.pontosAcumulados || 0).toLocaleString("pt-BR")}</b> pontos serão somados automaticamente ao saldo do programa selecionado.</div>
+    <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.pontosAcumulados} onClick={() => onSave(form)}>Salvar crédito</button>
+  </div></div>;
+}
+
 // ---------- Dashboard agregada do admin ----------
 function AdminAggregateDashboard({ clients }) {
   const [loading, setLoading] = useState(true);
-  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [] });
+  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [], viagens: [], proximasEmissoes: [], assinaturas: [] });
 
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from("app_data").select("user_id, data");
       if (error) { console.error(error); setLoading(false); return; }
       let totalMilhas = 0, totalEconomia = 0;
+      const viagens = [];
+      const proximasEmissoes = [];
+      const assinaturas = [];
       const porCliente = (data || []).map((row) => {
         const d = row.data || {};
         const accs = d.accounts || [];
         const ems = d.emissions || [];
-        const milhas = accs.reduce((s, a) => s + Number(a.saldo || 0), 0);
-        const economia = ems.reduce((s, e) => {
+        const client = clients.find((c) => c.id === row.user_id);
+        const nomeCliente = client?.nome || client?.email || "Cliente removido";
+        const milhas = accs.reduce((sum, a) => sum + Number(a.saldo || 0), 0);
+        const economia = ems.reduce((sum, e) => {
           const conta = accs.find((a) => a.id === e.accountId);
           const cpm = conta ? Number(conta.cpm) : 0;
           const custo = (Number(e.milhas) / 1000) * cpm + Number(e.taxas || 0);
-          return s + (Number(e.valorMercado || 0) - custo);
+          return sum + (Number(e.valorMercado || 0) - custo);
         }, 0);
+
+        (d.proximasViagens || []).forEach((v) => viagens.push({ ...v, userId: row.user_id, cliente: nomeCliente }));
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        (d.emissions || []).forEach((e) => {
+          if (!e.dataIda) return;
+          const ida = new Date(`${e.dataIda}T00:00:00`);
+          if (ida >= hoje) {
+            const programa = accs.find((a) => a.id === e.accountId);
+            proximasEmissoes.push({ ...e, userId: row.user_id, cliente: nomeCliente, programa: programa?.programa || "Programa removido" });
+          }
+        });
+        (d.assinaturas || []).forEach((a) => {
+          const programa = accs.find((acc) => acc.id === a.programaId);
+          assinaturas.push({ ...a, userId: row.user_id, cliente: nomeCliente, programa: programa?.programa || "Programa removido" });
+        });
+
         totalMilhas += milhas; totalEconomia += economia;
-        const client = clients.find((c) => c.id === row.user_id);
-        return { id: row.user_id, nome: client?.nome || client?.email || "Cliente removido", milhas, economia };
+        return { id: row.user_id, nome: nomeCliente, milhas, economia };
       }).filter((c) => c.milhas > 0 || c.economia !== 0).sort((a, b) => b.milhas - a.milhas);
-      setAgg({ totalMilhas, totalEconomia, porCliente });
+
+      viagens.sort((a, b) => {
+        if (a.semData && !b.semData) return 1;
+        if (!a.semData && b.semData) return -1;
+        return (a.data || "9999-12-31").localeCompare(b.data || "9999-12-31");
+      });
+      proximasEmissoes.sort((a, b) => (a.dataIda || "9999-12-31").localeCompare(b.dataIda || "9999-12-31"));
+      assinaturas.sort((a, b) => (a.vencimento || "9999-12-31").localeCompare(b.vencimento || "9999-12-31"));
+      setAgg({ totalMilhas, totalEconomia, porCliente, viagens, proximasEmissoes, assinaturas });
       setLoading(false);
     })();
   }, [clients]);
@@ -845,6 +1189,54 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendo.length || "—"}</div><div className="mk-stub-foot">{vencendo.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
       </div>
 
+      <div className="mk-section-title"><h2>Planejamento de Viagens</h2></div>
+      {loading ? <div className="mk-empty">Carregando…</div> : agg.viagens.length === 0 ? (
+        <div className="mk-empty">Nenhum planejamento de viagem cadastrado pelos clientes.</div>
+      ) : (
+        <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
+          <table className="mk-table">
+            <thead><tr><th>Cliente</th><th>Destino</th><th>Partida</th><th>Data</th><th>Flexibilidade</th><th>Passageiros</th></tr></thead>
+            <tbody>{agg.viagens.map((v) => (
+              <tr key={`${v.userId}-${v.id}`}>
+                <td>{v.cliente}</td><td>{v.destino}</td><td>{v.partida || "—"}</td>
+                <td>{v.semData ? "Sem data definida" : formatDate(v.data)}</td>
+                <td>{!v.semData && Number(v.flexibilidade) > 0 ? `+${v.flexibilidade} dias` : "—"}</td>
+                <td>{Number(v.passageiros || 1)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="mk-stub" style={{ marginBottom: 22, paddingBottom: 16 }}>
+        <div className="mk-section-title" style={{ marginBottom: 12 }}><h2>Próximas Viagens</h2></div>
+        {loading ? <div className="mk-empty">Carregando…</div> : agg.proximasEmissoes.length === 0 ? (
+          <div className="mk-empty">Nenhuma emissão com viagem futura cadastrada.</div>
+        ) : (
+          <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Cliente</th><th>Embarque-Destino</th><th>Programa</th><th>Origem</th><th>Ida</th><th>Volta</th><th>Resgate</th><th>Milhas</th><th>Taxas</th></tr></thead><tbody>{agg.proximasEmissoes.map((e) => (
+            <tr key={`${e.userId}-${e.id}`}><td>{e.cliente}</td><td>{e.destino}</td><td>{e.programa}</td><td>{e.origemMilhas === "saldo" ? "Saldo em Conta" : "Resgate Anterior"}</td><td>{formatDate(e.dataIda)}</td><td>{formatDate(e.dataVolta)}</td><td>{formatDate(e.dataResgate || e.data)}</td><td>{Number(e.milhas || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(e.taxas)}</td></tr>
+          ))}</tbody></table></div>
+        )}
+      </div>
+
+      <div className="mk-section-title"><h2>Assinaturas dos clientes</h2></div>
+      {loading ? <div className="mk-empty">Carregando…</div> : agg.assinaturas.length === 0 ? (
+        <div className="mk-empty">Nenhuma assinatura cadastrada pelos clientes.</div>
+      ) : (
+        <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
+          <table className="mk-table">
+            <thead><tr><th>Cliente</th><th>Programa</th><th>Milhas/mês</th><th>Mensalidade</th><th>Tempo de assinatura</th><th>Início</th><th>Vencimento</th><th>Descrição</th></tr></thead>
+            <tbody>{agg.assinaturas.map((a) => (
+              <tr key={`${a.userId}-${a.id}`}>
+                <td>{a.cliente}</td><td>{a.programa}</td><td>{Number(a.milhasMes || 0).toLocaleString("pt-BR")}</td>
+                <td className="mk-negative">{formatNegativeBRL(a.valorMensal)}</td>
+                <td>{elapsedSubscriptionLabel(a.inicio, a.vencimento)}</td><td>{formatDate(a.inicio)}</td><td>{formatDate(a.vencimento)}</td><td>{a.descricao || "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
       <div className="mk-section-title"><h2>Clientes por volume de milhas</h2></div>
       {loading ? (
         <div className="mk-empty">Carregando…</div>
@@ -854,15 +1246,9 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
           <table className="mk-table">
             <thead><tr><th>Cliente</th><th>Milhas</th><th>Economia</th></tr></thead>
-            <tbody>
-              {agg.porCliente.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.nome}</td>
-                  <td>{c.milhas.toLocaleString("pt-BR")}</td>
-                  <td style={{ color: c.economia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(c.economia)}</td>
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{agg.porCliente.map((c) => (
+              <tr key={c.id}><td>{c.nome}</td><td>{c.milhas.toLocaleString("pt-BR")}</td><td style={{ color: c.economia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(c.economia)}</td></tr>
+            ))}</tbody>
           </table>
         </div>
       )}
@@ -870,20 +1256,11 @@ function AdminAggregateDashboard({ clients }) {
       {vencendo.length > 0 && (
         <>
           <div className="mk-section-title"><h2>Planos vencendo</h2></div>
-          <div className="mk-stub">
-            {vencendo.map((c) => (
-              <div className="mk-alert-row" key={c.id}>
-                <span>{c.nome || c.email}</span>
-                <span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span>
-              </div>
-            ))}
-          </div>
+          <div className="mk-stub">{vencendo.map((c) => (
+            <div className="mk-alert-row" key={c.id}><span>{c.nome || c.email}</span><span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span></div>
+          ))}</div>
         </>
       )}
-
-      <div className="mk-empty" style={{ marginTop: 22 }}>
-        Essa é uma primeira versão da dashboard de admin — me conta quais outros indicadores você quer ver aqui que eu expando.
-      </div>
     </>
   );
 }
@@ -939,8 +1316,7 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
         <div className="mk-form-row"><label>E-mail (login)</label><input type="email" value={form.email} disabled={isEdit} onChange={(e) => set("email", e.target.value)} /></div>
         {!isEdit && <div className="mk-form-row"><label>Senha</label><input type="password" value={form.senha} onChange={(e) => set("senha", e.target.value)} minLength={6} /></div>}
         <div className="mk-form-cols">
-          <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
-          <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
+            <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
         </div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Plano — valor pago (R$)</label><input type="number" step="0.01" value={form.planoValor} onChange={(e) => set("planoValor", e.target.value)} /></div>
@@ -1053,6 +1429,7 @@ function AdminShell({ adminEmail, onSignOut }) {
   const [viewingClient, setViewingClient] = useState(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [adminName, setAdminName] = useState("");
 
   const loadClients = () => {
     supabase.from("profiles").select("*").eq("is_admin", false).order("nome").then(({ data, error }) => {
@@ -1061,6 +1438,9 @@ function AdminShell({ adminEmail, onSignOut }) {
     });
   };
   useEffect(loadClients, []);
+  useEffect(() => {
+    supabase.from("profiles").select("nome").eq("email", adminEmail).maybeSingle().then(({ data }) => setAdminName(data?.nome || ""));
+  }, [adminEmail]);
 
   if (viewingClient) {
     return (
@@ -1102,7 +1482,7 @@ function AdminShell({ adminEmail, onSignOut }) {
             </div>
             <div style={{ position: "relative" }}>
               <button className="mk-userpill" style={{ cursor: "pointer" }} onClick={() => setSwitcherOpen((s) => !s)}>
-                <User size={14} /> <span className="mk-userpill-text">{adminEmail}</span> <ChevronDown size={14} />
+                <User size={14} /> <span className="mk-userpill-text">{adminName || adminEmail}</span> <ChevronDown size={14} />
               </button>
               {switcherOpen && (
                 <div className="mk-switcher">
