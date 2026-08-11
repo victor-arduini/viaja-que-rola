@@ -443,6 +443,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showTripForm, setShowTripForm] = useState(false);
   const [showHotelForm, setShowHotelForm] = useState(false);
   const [showCreditCardForm, setShowCreditCardForm] = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [editingEmission, setEditingEmission] = useState(null);
+  const [editingTrip, setEditingTrip] = useState(null);
+  const [editingHotel, setEditingHotel] = useState(null);
+  const [editingCreditCard, setEditingCreditCard] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -517,7 +522,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     const custoTotal = custoMilhas + Number(em.taxas || 0);
     const economia = Number(em.valorMercado || 0) - custoTotal;
     const pct = em.valorMercado ? (economia / Number(em.valorMercado)) * 100 : 0;
-    return { ...em, conta, custoMilhas, custoTotal, economia, pct };
+    const passageiros = Math.max(1, Number(em.passageiros || 1));
+    const valorMercadoPorPassagem = Number(em.valorMercado || 0) / passageiros;
+    const economiaPorPassagem = economia / passageiros;
+    const custoPorPassagem = custoTotal / passageiros;
+    return { ...em, conta, custoMilhas, custoTotal, economia, pct, passageiros, valorMercadoPorPassagem, economiaPorPassagem, custoPorPassagem };
   }).sort((a, b) => (b.data || "").localeCompare(a.data || "")), [emissions, accounts]);
 
   const reservasCalc = useMemo(() => (db?.reservas || []).map((r) => {
@@ -603,7 +612,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   }, [accounts]);
 
   const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
+  const updateAccount = (id, data) => setAccounts((prev) => prev.map((a) => a.id === id ? { ...a, ...data, id } : a));
   const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
+
   const addEmission = (data) => {
     setDb((prev) => {
       const shouldDebit = data.origemMilhas === "saldo";
@@ -611,6 +622,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.milhas || 0)) }
         : a) : (prev.accounts || []);
       return { ...prev, accounts: nextAccounts, emissions: [...(prev.emissions || []), { id: uid(), ...data, saldoDebitado: shouldDebit }] };
+    });
+  };
+  const updateEmission = (id, data) => {
+    setDb((prev) => {
+      const old = (prev.emissions || []).find((e) => e.id === id);
+      let nextAccounts = [...(prev.accounts || [])];
+      if (old?.saldoDebitado) {
+        nextAccounts = nextAccounts.map((a) => a.id === old.accountId ? { ...a, saldo: Number(a.saldo || 0) + Number(old.milhas || 0) } : a);
+      }
+      const shouldDebit = data.origemMilhas === "saldo";
+      if (shouldDebit) {
+        nextAccounts = nextAccounts.map((a) => a.id === data.accountId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.milhas || 0)) } : a);
+      }
+      return { ...prev, accounts: nextAccounts, emissions: (prev.emissions || []).map((e) => e.id === id ? { ...e, ...data, id, saldoDebitado: shouldDebit } : e) };
     });
   };
   const removeEmission = (id) => {
@@ -622,8 +647,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       return { ...prev, accounts: nextAccounts, emissions: (prev.emissions || []).filter((e) => e.id !== id) };
     });
   };
+
   const addTrip = (data) => setProximasViagens((prev) => [...prev, { id: uid(), ...data }]);
+  const updateTrip = (id, data) => setProximasViagens((prev) => prev.map((v) => v.id === id ? { ...v, ...data, id } : v));
   const removeTrip = (id) => setProximasViagens((prev) => prev.filter((v) => v.id !== id));
+
   const addHotelReservation = (data) => {
     setDb((prev) => {
       const shouldDebit = data.origemMilhas === "saldo";
@@ -631,6 +659,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontosMilhas || 0)) }
         : a) : (prev.accounts || []);
       return { ...prev, accounts: nextAccounts, reservas: [...(prev.reservas || []), { id: uid(), ...data, saldoDebitado: shouldDebit }] };
+    });
+  };
+  const updateHotelReservation = (id, data) => {
+    setDb((prev) => {
+      const old = (prev.reservas || []).find((r) => r.id === id);
+      let nextAccounts = [...(prev.accounts || [])];
+      if (old?.saldoDebitado) {
+        nextAccounts = nextAccounts.map((a) => a.id === old.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(old.pontosMilhas || 0) } : a);
+      }
+      const shouldDebit = data.origemMilhas === "saldo";
+      if (shouldDebit) {
+        nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontosMilhas || 0)) } : a);
+      }
+      return { ...prev, accounts: nextAccounts, reservas: (prev.reservas || []).map((r) => r.id === id ? { ...r, ...data, id, saldoDebitado: shouldDebit } : r) };
     });
   };
   const removeHotelReservation = (id) => {
@@ -642,12 +684,24 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       return { ...prev, accounts: nextAccounts, reservas: (prev.reservas || []).filter((x) => x.id !== id) };
     });
   };
+
   const addCreditCard = (data) => {
     setDb((prev) => ({
       ...prev,
       accounts: (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontosAcumulados || 0) } : a),
       creditosCartao: [...(prev.creditosCartao || []), { id: uid(), ...data, saldoCreditado: true }],
     }));
+  };
+  const updateCreditCard = (id, data) => {
+    setDb((prev) => {
+      const old = (prev.creditosCartao || []).find((c) => c.id === id);
+      let nextAccounts = [...(prev.accounts || [])];
+      if (old?.saldoCreditado) {
+        nextAccounts = nextAccounts.map((a) => a.id === old.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontosAcumulados || 0)) } : a);
+      }
+      nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontosAcumulados || 0) } : a);
+      return { ...prev, accounts: nextAccounts, creditosCartao: (prev.creditosCartao || []).map((c) => c.id === id ? { ...c, ...data, id, saldoCreditado: true } : c) };
+    });
   };
   const removeCreditCard = (id) => {
     setDb((prev) => {
@@ -784,7 +838,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <>
               <div className="mk-section-title">
                 <h2>Programas</h2>
-                <button className="mk-btn" onClick={() => setShowAccountForm(true)}><Plus size={15} /> Novo programa</button>
+                <button className="mk-btn" onClick={() => { setEditingAccount(null); setShowAccountForm(true); }}><Plus size={15} /> Novo programa</button>
               </div>
               {accounts.length === 0 ? (
                 <div className="mk-empty">Nenhum programa cadastrado. Clique em "Novo programa" para começar.</div>
@@ -795,7 +849,10 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
                           <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span></span>
-                          <button className="mk-iconbtn" onClick={() => removeAccount(a.id)}><Trash2 size={15} /></button>
+                          <span>
+                            <button className="mk-iconbtn" onClick={() => { setEditingAccount(a); setShowAccountForm(true); }} title="Editar"><Pencil size={15} /></button>
+                            <button className="mk-iconbtn" onClick={() => removeAccount(a.id)} title="Excluir"><Trash2 size={15} /></button>
+                          </span>
                         </div>
                         {a.cpf && (
                           <div className="mk-field" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
@@ -820,7 +877,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <>
               <div className="mk-section-title">
                 <h2>Planejamento de Viagens</h2>
-                <button className="mk-btn" onClick={() => setShowTripForm(true)}><Plus size={15} /> Nova Viagem</button>
+                <button className="mk-btn" onClick={() => { setEditingTrip(null); setShowTripForm(true); }}><Plus size={15} /> Nova Viagem</button>
               </div>
               {tripsSorted.length === 0 ? (
                 <div className="mk-empty">Nenhum planejamento de viagem cadastrado.</div>
@@ -831,7 +888,10 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
                           <span className="mk-ticket-title"><MapPin size={15} /> {v.destino}</span>
-                          <button className="mk-iconbtn" onClick={() => removeTrip(v.id)}><Trash2 size={15} /></button>
+                          <span>
+                            <button className="mk-iconbtn" onClick={() => { setEditingTrip(v); setShowTripForm(true); }} title="Editar"><Pencil size={15} /></button>
+                            <button className="mk-iconbtn" onClick={() => removeTrip(v.id)} title="Excluir"><Trash2 size={15} /></button>
+                          </span>
                         </div>
                         <div className="mk-field">Partida: <b>{v.partida || "—"}</b> · Passageiros: <b>{Number(v.passageiros || 1)}</b></div>
                         <div className="mk-field" style={{ marginTop: 5 }}>Data: <b>{v.semData ? "Sem data definida" : formatDate(v.data)}</b>{!v.semData && Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</div>
@@ -851,7 +911,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <>
               <div className="mk-section-title">
                 <h2>Emissões</h2>
-                <button className="mk-btn" onClick={() => setShowEmissionForm(true)} disabled={accounts.length === 0}><Plus size={15} /> Nova emissão</button>
+                <button className="mk-btn" onClick={() => { setEditingEmission(null); setShowEmissionForm(true); }} disabled={accounts.length === 0}><Plus size={15} /> Nova emissão</button>
               </div>
               {accounts.length === 0 ? (
                 <div className="mk-empty">Cadastre uma conta primeiro para registrar emissões.</div>
@@ -864,11 +924,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
                           <span className="mk-ticket-title"><Plane size={15} /> {e.destino}<span className="mk-badge">{e.conta ? e.conta.programa : "conta removida"}</span></span>
-                          <button className="mk-iconbtn" onClick={() => removeEmission(e.id)}><Trash2 size={15} /></button>
+                          <span>
+                            <button className="mk-iconbtn" onClick={() => { setEditingEmission(e); setShowEmissionForm(true); }} title="Editar"><Pencil size={15} /></button>
+                            <button className="mk-iconbtn" onClick={() => removeEmission(e.id)} title="Excluir"><Trash2 size={15} /></button>
+                          </span>
                         </div>
                         <div className="mk-field">Origem: <b>{e.origemMilhas === "saldo" ? "Saldo em Conta" : "Resgate Anterior"}</b> · Resgate: <b>{formatDate(e.dataResgate || e.data)}</b></div>
-                        <div className="mk-field">Ida: <b>{formatDate(e.dataIda)}</b> · Volta: <b>{formatDate(e.dataVolta)}</b> · {Number(e.milhas).toLocaleString("pt-BR")} milhas</div>
-                        <div className="mk-field">Taxas: <b className="mk-negative">{formatNegativeBRL(e.taxas)}</b> · Custo estimado: <b className="mk-negative">{formatNegativeBRL(e.custoTotal)}</b> · Valor de mercado: <b>{formatBRL(e.valorMercado)}</b></div>
+                        <div className="mk-field">Ida: <b>{formatDate(e.dataIda)}</b> · Volta: <b>{formatDate(e.dataVolta)}</b> · Passageiros: <b>{e.passageiros}</b> · {Number(e.milhas).toLocaleString("pt-BR")} milhas</div>
+                        <div className="mk-field">Taxas: <b className="mk-negative">{formatNegativeBRL(e.taxas)}</b> · Custo estimado total: <b className="mk-negative">{formatNegativeBRL(e.custoTotal)}</b> · Valor de mercado total: <b>{formatBRL(e.valorMercado)}</b></div>
+                        <div className="mk-field">Por passagem — Valor estimado: <b>{formatBRL(e.valorMercadoPorPassagem)}</b> · Custo: <b className="mk-negative">{formatNegativeBRL(e.custoPorPassagem)}</b> · Economia: <b style={{ color: e.economiaPorPassagem >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(e.economiaPorPassagem)}</b></div>
                       </div>
                       <div className="mk-ticket-side">
                         <div className="mk-field" style={{ textAlign: "right" }}>Economia</div>
@@ -888,7 +952,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <>
               <div className="mk-section-title">
                 <h2>Reservas de Hotel</h2>
-                <button className="mk-btn" onClick={() => setShowHotelForm(true)} disabled={accounts.length === 0}><Plus size={15} /> Nova Reserva</button>
+                <button className="mk-btn" onClick={() => { setEditingHotel(null); setShowHotelForm(true); }} disabled={accounts.length === 0}><Plus size={15} /> Nova Reserva</button>
               </div>
               {accounts.length === 0 ? <div className="mk-empty">Cadastre um programa primeiro para registrar reservas de hotel.</div> : reservasCalc.length === 0 ? (
                 <div className="mk-empty">Nenhuma reserva de hotel registrada ainda.</div>
@@ -896,7 +960,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-card-list">{reservasCalc.map((r) => (
                   <div className="mk-ticket" key={r.id}>
                     <div className="mk-ticket-main">
-                      <div className="mk-ticket-row"><span className="mk-ticket-title"><Hotel size={15} /> {r.hotel || r.destino || "Hotel"}</span><button className="mk-iconbtn" onClick={() => removeHotelReservation(r.id)}><Trash2 size={15} /></button></div>
+                      <div className="mk-ticket-row"><span className="mk-ticket-title"><Hotel size={15} /> {r.hotel || r.destino || "Hotel"}</span><span><button className="mk-iconbtn" onClick={() => { setEditingHotel(r); setShowHotelForm(true); }} title="Editar"><Pencil size={15} /></button><button className="mk-iconbtn" onClick={() => removeHotelReservation(r.id)} title="Excluir"><Trash2 size={15} /></button></span></div>
                       <div className="mk-field">Origem: <b>{r.origemMilhas === "saldo" ? (r.conta?.programa || "Programa removido") : `Resgate Anterior${r.conta?.programa ? ` · ${r.conta.programa}` : ""}`}</b></div>
                       <div className="mk-field">Pontos/Milhas usadas: <b>{Number(r.pontosMilhas || 0).toLocaleString("pt-BR")}</b> · Valor de mercado: <b>{formatBRL(r.valorMercado)}</b></div>
                       <div className="mk-field">Valor pago estimado: <b className="mk-negative">{formatNegativeBRL(r.custoPontos)}</b></div>
@@ -912,11 +976,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <>
               <div className="mk-section-title">
                 <h2>Créditos de Cartão</h2>
-                <button className="mk-btn" onClick={() => setShowCreditCardForm(true)} disabled={accounts.filter((a) => inferTipo(a) !== "Hotel").length === 0}><Plus size={15} /> Novo Crédito</button>
+                <button className="mk-btn" onClick={() => { setEditingCreditCard(null); setShowCreditCardForm(true); }} disabled={accounts.filter((a) => inferTipo(a) !== "Hotel").length === 0}><Plus size={15} /> Novo Crédito</button>
               </div>
               {(db.creditosCartao || []).length === 0 ? <div className="mk-empty">Nenhum crédito de cartão registrado ainda.</div> : (
                 <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Programa ou Co-Branded</th><th>Pontos por R$</th><th>Fatura do mês</th><th>Pontos acumulados</th><th></th></tr></thead><tbody>
-                  {(db.creditosCartao || []).map((c) => { const conta = accounts.find((a) => a.id === c.programaId); return <tr key={c.id}><td>{conta?.programa || c.cartao || "—"}</td><td>{Number(c.pontosPorReal || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(c.faturaMes)}</td><td>{Number(c.pontosAcumulados || 0).toLocaleString("pt-BR")}</td><td><button className="mk-iconbtn" onClick={() => removeCreditCard(c.id)}><Trash2 size={14} /></button></td></tr>; })}
+                  {(db.creditosCartao || []).map((c) => { const conta = accounts.find((a) => a.id === c.programaId); return <tr key={c.id}><td>{conta?.programa || c.cartao || "—"}</td><td>{Number(c.pontosPorReal || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(c.faturaMes)}</td><td>{Number(c.pontosAcumulados || 0).toLocaleString("pt-BR")}</td><td><button className="mk-iconbtn" onClick={() => { setEditingCreditCard(c); setShowCreditCardForm(true); }} title="Editar"><Pencil size={14} /></button><button className="mk-iconbtn" onClick={() => removeCreditCard(c.id)} title="Excluir"><Trash2 size={14} /></button></td></tr>; })}
                 </tbody></table></div>
               )}
             </>
@@ -928,23 +992,24 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         </div>
       </div>
 
-      {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount(d); setShowAccountForm(false); }} />}
-      {showEmissionForm && <EmissionFormModal accounts={accounts} onClose={() => setShowEmissionForm(false)} onSave={(d) => { addEmission(d); setShowEmissionForm(false); }} />}
-      {showTripForm && <TripFormModal onClose={() => setShowTripForm(false)} onSave={(d) => { addTrip(d); setShowTripForm(false); }} />}
-      {showHotelForm && <HotelReservationFormModal accounts={accounts} onClose={() => setShowHotelForm(false)} onSave={(d) => { addHotelReservation(d); setShowHotelForm(false); }} />}
-      {showCreditCardForm && <CreditCardFormModal accounts={accounts} onClose={() => setShowCreditCardForm(false)} onSave={(d) => { addCreditCard(d); setShowCreditCardForm(false); }} />}
+      {showAccountForm && <AccountFormModal initial={editingAccount} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} onSave={(d) => { editingAccount ? updateAccount(editingAccount.id, d) : addAccount(d); setShowAccountForm(false); setEditingAccount(null); }} />}
+      {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
+      {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
+      {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
+      {showCreditCardForm && <CreditCardFormModal initial={editingCreditCard} accounts={accounts} onClose={() => { setShowCreditCardForm(false); setEditingCreditCard(null); }} onSave={(d) => { editingCreditCard ? updateCreditCard(editingCreditCard.id, d) : addCreditCard(d); setShowCreditCardForm(false); setEditingCreditCard(null); }} />}
     </div>
   );
 }
 
-function AccountFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", saldo: "", cpm: "", validade: "" });
+function AccountFormModal({ initial, onClose, onSave }) {
+  const initialTipo = initial ? inferTipo(initial) : "Aéreo";
+  const [form, setForm] = useState({ tipo: initialTipo, marca: initial?.programa || MARCAS_POR_TIPO[initialTipo][0], titular: initial?.titular || "", saldo: initial?.saldo ?? "", cpm: initial?.cpm ?? "", validade: initial?.validade || "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
-        <h3>Novo programa <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <h3>{initial ? "Editar programa" : "Novo programa"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Tipo</label>
           <select value={form.tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS_PROGRAMA.map((t) => <option key={t} value={t}>{t}</option>)}</select>
         </div>
@@ -957,22 +1022,22 @@ function AccountFormModal({ onClose, onSave }) {
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
         <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>{initial ? "Salvar alterações" : "Salvar programa"}</button>
       </div>
     </div>
   );
 }
 
 
-function TripFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ destino: "", partida: "", semData: false, data: "", flexibilidade: "0", passageiros: "1" });
+function TripFormModal({ initial, onClose, onSave }) {
+  const [form, setForm] = useState({ destino: initial?.destino || "", partida: initial?.partida || "", semData: !!initial?.semData, data: initial?.data || "", flexibilidade: String(initial?.flexibilidade ?? "0"), passageiros: String(initial?.passageiros ?? "1") });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const canSave = form.destino && form.partida && (form.semData || form.data);
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
-        <h3>Nova Viagem <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <h3>{initial ? "Editar Viagem" : "Nova Viagem"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: Lisboa" /></div>
         <div className="mk-form-row"><label>Partida</label><input value={form.partida} onChange={(e) => set("partida", e.target.value)} placeholder="Ex.: Belo Horizonte" /></div>
         <label className="mk-check-row"><input type="checkbox" checked={form.semData} onChange={(e) => set("semData", e.target.checked)} /> Sem data definida</label>
@@ -993,50 +1058,68 @@ function TripFormModal({ onClose, onSave }) {
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, data: form.semData ? "" : form.data, flexibilidade: form.semData ? "0" : form.flexibilidade })}>Salvar viagem</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, data: form.semData ? "" : form.data, flexibilidade: form.semData ? "0" : form.flexibilidade })}>{initial ? "Salvar alterações" : "Salvar viagem"}</button>
       </div>
     </div>
   );
 }
 
-function EmissionFormModal({ accounts, onClose, onSave }) {
+function EmissionFormModal({ initial, accounts, onClose, onSave }) {
   const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
-  const [form, setForm] = useState({ origemMilhas: "saldo", accountId: eligibleAccounts[0]?.id || "", dataResgate: "", dataIda: "", dataVolta: "", destino: "", milhas: "", taxas: "", valorMercado: "" });
+  const [form, setForm] = useState({
+    origemMilhas: initial?.origemMilhas || "saldo",
+    accountId: initial?.accountId || eligibleAccounts[0]?.id || "",
+    dataResgate: initial?.dataResgate || initial?.data || "",
+    dataIda: initial?.dataIda || "",
+    dataVolta: initial?.dataVolta || "",
+    destino: initial?.destino || "",
+    passageiros: String(initial?.passageiros ?? "1"),
+    milhas: initial?.milhas ?? "",
+    taxas: initial?.taxas ?? "",
+    valorMercado: initial?.valorMercado ?? "",
+  });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const conta = eligibleAccounts.find((a) => a.id === form.accountId);
   const cpm = conta ? Number(conta.cpm) : 0;
   const custoMilhas = (Number(form.milhas || 0) / 1000) * cpm;
   const custoTotal = custoMilhas + Number(form.taxas || 0);
   const economia = Number(form.valorMercado || 0) - custoTotal;
-  const saldoInsuficiente = form.origemMilhas === "saldo" && conta && Number(form.milhas || 0) > Number(conta.saldo || 0);
+  const passageiros = Math.max(1, Number(form.passageiros || 1));
+  const valorMercadoPorPassagem = Number(form.valorMercado || 0) / passageiros;
+  const economiaPorPassagem = economia / passageiros;
+  const custoPorPassagem = custoTotal / passageiros;
+  const saldoDisponivel = Number(conta?.saldo || 0) + (initial?.saldoDebitado && initial?.accountId === form.accountId ? Number(initial?.milhas || 0) : 0);
+  const saldoInsuficiente = form.origemMilhas === "saldo" && conta && Number(form.milhas || 0) > saldoDisponivel;
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
-        <h3>Nova emissão <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <h3>{initial ? "Editar emissão" : "Nova emissão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Origem das milhas</label><select value={form.origemMilhas} onChange={(e) => set("origemMilhas", e.target.value)}><option value="resgate">Resgate Anterior</option><option value="saldo">Saldo em Conta</option></select></div>
         <div className="mk-form-row"><label>Programa</label><select value={form.accountId} onChange={(e) => set("accountId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
+        <div className="mk-form-row"><label>Passageiros</label><select value={form.passageiros} onChange={(e) => set("passageiros", e.target.value)}>{Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
         <div className="mk-form-row"><label>Data do Resgate</label><input type="date" value={form.dataResgate} onChange={(e) => set("dataResgate", e.target.value)} /></div>
         <div className="mk-form-row"><label>Embarque-Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: CNF → LIS" /></div>
         <div className="mk-form-cols"><div className="mk-form-row"><label>Data da Ida</label><input type="date" value={form.dataIda} onChange={(e) => set("dataIda", e.target.value)} /></div><div className="mk-form-row"><label>Data da Volta</label><input type="date" value={form.dataVolta} onChange={(e) => set("dataVolta", e.target.value)} /></div></div>
         <div className="mk-form-cols"><div className="mk-form-row"><label>Milhas usadas</label><input type="number" value={form.milhas} onChange={(e) => set("milhas", e.target.value)} placeholder="80000" /></div><div className="mk-form-row"><label>Taxas pagas (R$)</label><input type="number" step="0.01" value={form.taxas} onChange={(e) => set("taxas", e.target.value)} placeholder="350" /></div></div>
-        <div className="mk-form-row"><label>Valor de mercado da passagem (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="6200" /></div>
+        <div className="mk-form-row"><label>Valor de mercado total (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="6200" /></div>
         {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente nesse programa para debitar {Number(form.milhas || 0).toLocaleString("pt-BR")} milhas.</div>}
-        {form.milhas && form.valorMercado && <div className="mk-preview">Custo das milhas: <b className="mk-negative">{formatNegativeBRL(custoMilhas)}</b><br />Taxas: <b className="mk-negative">{formatNegativeBRL(form.taxas)}</b><br />Economia: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span>{form.origemMilhas === "resgate" && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa, mas o saldo não será debitado novamente.</span></>}</div>}
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave(form)}>Salvar emissão</button>
+        {form.milhas && form.valorMercado && <div className="mk-preview">Custo total das milhas: <b className="mk-negative">{formatNegativeBRL(custoMilhas)}</b><br />Taxas totais: <b className="mk-negative">{formatNegativeBRL(form.taxas)}</b><br />Economia total: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span><br /><br /><b>Por passagem ({passageiros} passageiro{passageiros > 1 ? "s" : ""})</b><br />Valor estimado: <b>{formatBRL(valorMercadoPorPassagem)}</b><br />Custo estimado: <b className="mk-negative">{formatNegativeBRL(custoPorPassagem)}</b><br />Economia por passagem: <b style={{ color: economiaPorPassagem >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economiaPorPassagem)}</b>{form.origemMilhas === "resgate" && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa, mas o saldo não será debitado novamente.</span></>}</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave({ ...form, passageiros })}>{initial ? "Salvar alterações" : "Salvar emissão"}</button>
       </div>
     </div>
   );
 }
 
-function HotelReservationFormModal({ accounts, onClose, onSave }) {
-  const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
+function HotelReservationFormModal({ initial, accounts, onClose, onSave }) {
+  const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel" || (a.programa || "").toLowerCase().includes("accor"));
+  const initialIsResgate = initial?.origemMilhas === "resgate";
   const [form, setForm] = useState({
-    hotel: "",
-    origemPrograma: eligibleAccounts[0]?.id || "resgate",
-    programaResgateId: eligibleAccounts[0]?.id || "",
-    pontosMilhas: "",
-    valorMercado: "",
+    hotel: initial?.hotel || initial?.destino || "",
+    origemPrograma: initial ? (initialIsResgate ? "resgate" : initial.programaId) : (eligibleAccounts[0]?.id || "resgate"),
+    programaResgateId: initial?.programaId || eligibleAccounts[0]?.id || "",
+    pontosMilhas: initial?.pontosMilhas ?? "",
+    valorMercado: initial?.valorMercado ?? "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isResgateAnterior = form.origemPrograma === "resgate";
@@ -1044,78 +1127,43 @@ function HotelReservationFormModal({ accounts, onClose, onSave }) {
   const conta = eligibleAccounts.find((a) => a.id === programaId);
   const custoPontos = (Number(form.pontosMilhas || 0) / 1000) * Number(conta?.cpm || 0);
   const economia = Number(form.valorMercado || 0) - custoPontos;
-  const saldoInsuficiente = !isResgateAnterior && conta && Number(form.pontosMilhas || 0) > Number(conta.saldo || 0);
+  const saldoDisponivel = Number(conta?.saldo || 0) + (initial?.saldoDebitado && initial?.programaId === programaId ? Number(initial?.pontosMilhas || 0) : 0);
+  const saldoInsuficiente = !isResgateAnterior && conta && Number(form.pontosMilhas || 0) > saldoDisponivel;
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Nova Reserva de Hotel <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-
-        <div className="mk-form-row">
-          <label>Hotel</label>
-          <textarea rows="3" value={form.hotel} onChange={(e) => set("hotel", e.target.value)} placeholder="Descrição / comentário da reserva" />
-        </div>
-
+        <h3>{initial ? "Editar Reserva de Hotel" : "Nova Reserva de Hotel"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Hotel</label><textarea rows="3" value={form.hotel} onChange={(e) => set("hotel", e.target.value)} placeholder="Descrição / comentário da reserva" /></div>
         <div className="mk-form-row">
           <label>Pontos/Milhas usadas</label>
           <select value={form.origemPrograma} onChange={(e) => set("origemPrograma", e.target.value)}>
             <option value="resgate">Resgate Anterior</option>
             {eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}
           </select>
-          {isResgateAnterior && (
-            <select value={form.programaResgateId} onChange={(e) => set("programaResgateId", e.target.value)}>
-              <option value="">Programa usado no resgate anterior</option>
-              {eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — CPM {formatBRL(a.cpm)}</option>)}
-            </select>
-          )}
+          {isResgateAnterior && <select value={form.programaResgateId} onChange={(e) => set("programaResgateId", e.target.value)}><option value="">Programa usado no resgate anterior</option>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — CPM {formatBRL(a.cpm)}</option>)}</select>}
           <input type="number" value={form.pontosMilhas} onChange={(e) => set("pontosMilhas", e.target.value)} placeholder="Quantidade de pontos/milhas" />
         </div>
-
-        <div className="mk-form-row">
-          <label>Valor de mercado (R$)</label>
-          <input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} />
-        </div>
-
+        <div className="mk-form-row"><label>Valor de mercado (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} /></div>
         {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente para esse resgate.</div>}
-        {form.pontosMilhas && form.valorMercado && conta && (
-          <div className="mk-preview">
-            Valor pago estimado pelo milheiro: <b className="mk-negative">{formatNegativeBRL(custoPontos)}</b><br />
-            Economia: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span>
-            {isResgateAnterior && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa escolhido, mas o saldo não será debitado novamente.</span></>}
-          </div>
-        )}
-
-        <button
-          className="mk-btn"
-          style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
-          disabled={!form.hotel || !programaId || !form.pontosMilhas || !form.valorMercado || saldoInsuficiente}
-          onClick={() => onSave({
-            hotel: form.hotel,
-            origemMilhas: isResgateAnterior ? "resgate" : "saldo",
-            programaId,
-            pontosMilhas: form.pontosMilhas,
-            valorMercado: form.valorMercado,
-            cpmUsado: Number(conta?.cpm || 0),
-          })}
-        >
-          Salvar reserva
-        </button>
+        {form.pontosMilhas && form.valorMercado && conta && <div className="mk-preview">Valor pago estimado pelo milheiro: <b className="mk-negative">{formatNegativeBRL(custoPontos)}</b><br />Economia: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span>{isResgateAnterior && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa escolhido, mas o saldo não será debitado novamente.</span></>}</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.hotel || !programaId || !form.pontosMilhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave({ hotel: form.hotel, origemMilhas: isResgateAnterior ? "resgate" : "saldo", programaId, pontosMilhas: form.pontosMilhas, valorMercado: form.valorMercado, cpmUsado: Number(conta?.cpm || 0) })}>{initial ? "Salvar alterações" : "Salvar reserva"}</button>
       </div>
     </div>
   );
 }
 
-function CreditCardFormModal({ accounts, onClose, onSave }) {
+function CreditCardFormModal({ initial, accounts, onClose, onSave }) {
   const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
-  const [form, setForm] = useState({ programaId: eligibleAccounts[0]?.id || "", pontosPorReal: "", faturaMes: "", pontosAcumulados: "" });
+  const [form, setForm] = useState({ programaId: initial?.programaId || eligibleAccounts[0]?.id || "", pontosPorReal: initial?.pontosPorReal ?? "", faturaMes: initial?.faturaMes ?? "", pontosAcumulados: initial?.pontosAcumulados ?? "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  return <div className="mk-modal-backdrop" onClick={onClose}><div className="mk-modal" onClick={(e) => e.stopPropagation()}><h3>Novo Crédito de Cartão <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+  return <div className="mk-modal-backdrop" onClick={onClose}><div className="mk-modal" onClick={(e) => e.stopPropagation()}><h3>{initial ? "Editar Crédito de Cartão" : "Novo Crédito de Cartão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
     <div className="mk-form-row"><label>Programa ou Co-Branded</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — {inferTipo(a)}</option>)}</select></div>
     <div className="mk-form-row"><label>Pontos por R$</label><input type="number" step="0.01" value={form.pontosPorReal} onChange={(e) => set("pontosPorReal", e.target.value)} /></div>
     <div className="mk-form-row"><label>Fatura do mês (R$)</label><input type="number" step="0.01" value={form.faturaMes} onChange={(e) => set("faturaMes", e.target.value)} /></div>
     <div className="mk-form-row"><label>Pontos acumulados</label><input type="number" value={form.pontosAcumulados} onChange={(e) => set("pontosAcumulados", e.target.value)} /></div>
-    <div className="mk-preview">Ao salvar, <b>{Number(form.pontosAcumulados || 0).toLocaleString("pt-BR")}</b> pontos serão somados automaticamente ao saldo do programa selecionado.</div>
-    <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.pontosAcumulados} onClick={() => onSave(form)}>Salvar crédito</button>
+    <div className="mk-preview">{initial ? "Ao salvar, o crédito anterior será revertido e o novo valor será aplicado ao programa selecionado." : <>Ao salvar, <b>{Number(form.pontosAcumulados || 0).toLocaleString("pt-BR")}</b> pontos serão somados automaticamente ao saldo do programa selecionado.</>}</div>
+    <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.pontosAcumulados} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar crédito"}</button>
   </div></div>;
 }
 
@@ -1213,8 +1261,8 @@ function AdminAggregateDashboard({ clients }) {
         {loading ? <div className="mk-empty">Carregando…</div> : agg.proximasEmissoes.length === 0 ? (
           <div className="mk-empty">Nenhuma emissão com viagem futura cadastrada.</div>
         ) : (
-          <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Cliente</th><th>Embarque-Destino</th><th>Programa</th><th>Origem</th><th>Ida</th><th>Volta</th><th>Resgate</th><th>Milhas</th><th>Taxas</th></tr></thead><tbody>{agg.proximasEmissoes.map((e) => (
-            <tr key={`${e.userId}-${e.id}`}><td>{e.cliente}</td><td>{e.destino}</td><td>{e.programa}</td><td>{e.origemMilhas === "saldo" ? "Saldo em Conta" : "Resgate Anterior"}</td><td>{formatDate(e.dataIda)}</td><td>{formatDate(e.dataVolta)}</td><td>{formatDate(e.dataResgate || e.data)}</td><td>{Number(e.milhas || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(e.taxas)}</td></tr>
+          <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Cliente</th><th>Embarque-Destino</th><th>Programa</th><th>Origem</th><th>Ida</th><th>Volta</th><th>Resgate</th><th>Passageiros</th><th>Milhas</th><th>Taxas</th></tr></thead><tbody>{agg.proximasEmissoes.map((e) => (
+            <tr key={`${e.userId}-${e.id}`}><td>{e.cliente}</td><td>{e.destino}</td><td>{e.programa}</td><td>{e.origemMilhas === "saldo" ? "Saldo em Conta" : "Resgate Anterior"}</td><td>{formatDate(e.dataIda)}</td><td>{formatDate(e.dataVolta)}</td><td>{formatDate(e.dataResgate || e.data)}</td><td>{Number(e.passageiros || 1)}</td><td>{Number(e.milhas || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(e.taxas)}</td></tr>
           ))}</tbody></table></div>
         )}
       </div>
