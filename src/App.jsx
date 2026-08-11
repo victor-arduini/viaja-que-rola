@@ -449,6 +449,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [editingHotel, setEditingHotel] = useState(null);
   const [editingCreditCard, setEditingCreditCard] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showProfileForm, setShowProfileForm] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -456,10 +457,17 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("nome, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("nome, email, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
+
+  useEffect(() => {
+    if (!userEmail) return;
+    supabase.from("profiles").update({ email: userEmail }).eq("id", userId).then(({ error }) => {
+      if (error) console.error(error);
+    });
+  }, [userId, userEmail]);
 
   useEffect(() => {
     if (!db) return;
@@ -758,7 +766,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
               <button className="mk-menu-toggle" onClick={() => setSidebarOpen(true)}><Menu size={18} /></button>
               <h2>{currentLabel}</h2>
             </div>
-            <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{displayName}</span></div>
+            {impersonating ? (
+              <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{displayName}</span></div>
+            ) : (
+              <button className="mk-userpill" style={{ cursor: "pointer" }} onClick={() => setShowProfileForm(true)} title="Meu perfil">
+                <User size={14} /> <span className="mk-userpill-text">{displayName}</span> <Pencil size={12} />
+              </button>
+            )}
           </div>
 
           {impersonating && (
@@ -997,6 +1011,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
       {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
       {showCreditCardForm && <CreditCardFormModal initial={editingCreditCard} accounts={accounts} onClose={() => { setShowCreditCardForm(false); setEditingCreditCard(null); }} onSave={(d) => { editingCreditCard ? updateCreditCard(editingCreditCard.id, d) : addCreditCard(d); setShowCreditCardForm(false); setEditingCreditCard(null); }} />}
+      {showProfileForm && !impersonating && (
+        <ProfileSettingsModal
+          currentEmail={profile?.email || userEmail}
+          onClose={() => setShowProfileForm(false)}
+          onSaved={(email) => {
+            setProfile((prev) => ({ ...(prev || {}), email: email || prev?.email }));
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1170,7 +1193,7 @@ function CreditCardFormModal({ initial, accounts, onClose, onSave }) {
 // ---------- Dashboard agregada do admin ----------
 function AdminAggregateDashboard({ clients }) {
   const [loading, setLoading] = useState(true);
-  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [], viagens: [], proximasEmissoes: [], assinaturas: [] });
+  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [], viagens: [], proximasEmissoes: [], assinaturas: [], vencimentos: [] });
 
   useEffect(() => {
     (async () => {
@@ -1180,6 +1203,12 @@ function AdminAggregateDashboard({ clients }) {
       const viagens = [];
       const proximasEmissoes = [];
       const assinaturas = [];
+      const vencimentos = [];
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const limiteSeisMeses = new Date(hoje);
+      limiteSeisMeses.setMonth(limiteSeisMeses.getMonth() + 6);
+
       const porCliente = (data || []).map((row) => {
         const d = row.data || {};
         const accs = d.accounts || [];
@@ -1187,17 +1216,22 @@ function AdminAggregateDashboard({ clients }) {
         const client = clients.find((c) => c.id === row.user_id);
         const nomeCliente = client?.nome || client?.email || "Cliente removido";
         const milhas = accs.reduce((sum, a) => sum + Number(a.saldo || 0), 0);
-        const economia = ems.reduce((sum, e) => {
+        const economiaEmissoes = ems.reduce((sum, e) => {
           const conta = accs.find((a) => a.id === e.accountId);
           const cpm = conta ? Number(conta.cpm) : 0;
           const custo = (Number(e.milhas) / 1000) * cpm + Number(e.taxas || 0);
           return sum + (Number(e.valorMercado || 0) - custo);
         }, 0);
+        const economiaHoteis = (d.reservasHotel || []).reduce((sum, r) => {
+          const conta = accs.find((a) => a.id === r.programaId);
+          const cpm = conta ? Number(conta.cpm) : Number(r.cpmSnapshot || 0);
+          const custo = (Number(r.pontosMilhas || 0) / 1000) * cpm;
+          return sum + (Number(r.valorMercado || 0) - custo);
+        }, 0);
+        const economia = economiaEmissoes + economiaHoteis;
 
         (d.proximasViagens || []).forEach((v) => viagens.push({ ...v, userId: row.user_id, cliente: nomeCliente }));
-        const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0);
-        (d.emissions || []).forEach((e) => {
+        ems.forEach((e) => {
           if (!e.dataIda) return;
           const ida = new Date(`${e.dataIda}T00:00:00`);
           if (ida >= hoje) {
@@ -1208,9 +1242,23 @@ function AdminAggregateDashboard({ clients }) {
         (d.assinaturas || []).forEach((a) => {
           const programa = accs.find((acc) => acc.id === a.programaId);
           assinaturas.push({ ...a, userId: row.user_id, cliente: nomeCliente, programa: programa?.programa || "Programa removido" });
+          if (a.vencimento) {
+            const dt = new Date(`${a.vencimento}T00:00:00`);
+            if (dt <= limiteSeisMeses) {
+              vencimentos.push({ id: `ass-${row.user_id}-${a.id}`, cliente: nomeCliente, tipo: "Assinatura", item: programa?.programa || "Programa removido", data: a.vencimento, dias: Math.ceil((dt - hoje) / 86400000), descricao: a.descricao || "" });
+            }
+          }
+        });
+        accs.forEach((a) => {
+          if (!a.validade) return;
+          const dt = new Date(`${a.validade}T00:00:00`);
+          if (dt <= limiteSeisMeses) {
+            vencimentos.push({ id: `acc-${row.user_id}-${a.id}`, cliente: nomeCliente, tipo: inferTipo(a) === "Aéreo" ? "Milhas" : "Pontos", item: a.programa || "Programa", data: a.validade, dias: Math.ceil((dt - hoje) / 86400000), descricao: "" });
+          }
         });
 
-        totalMilhas += milhas; totalEconomia += economia;
+        totalMilhas += milhas;
+        totalEconomia += economia;
         return { id: row.user_id, nome: nomeCliente, milhas, economia };
       }).filter((c) => c.milhas > 0 || c.economia !== 0).sort((a, b) => b.milhas - a.milhas);
 
@@ -1221,12 +1269,14 @@ function AdminAggregateDashboard({ clients }) {
       });
       proximasEmissoes.sort((a, b) => (a.dataIda || "9999-12-31").localeCompare(b.dataIda || "9999-12-31"));
       assinaturas.sort((a, b) => (a.vencimento || "9999-12-31").localeCompare(b.vencimento || "9999-12-31"));
-      setAgg({ totalMilhas, totalEconomia, porCliente, viagens, proximasEmissoes, assinaturas });
+      vencimentos.sort((a, b) => (a.data || "9999-12-31").localeCompare(b.data || "9999-12-31"));
+      setAgg({ totalMilhas, totalEconomia, porCliente, viagens, proximasEmissoes, assinaturas, vencimentos });
       setLoading(false);
     })();
   }, [clients]);
 
-  const vencendo = clients.filter((c) => c.plano_fim).map((c) => ({ ...c, dias: Math.ceil((new Date(c.plano_fim) - new Date()) / 86400000) })).filter((c) => c.dias <= 30).sort((a, b) => a.dias - b.dias);
+  const vencendoPlanos = clients.filter((c) => c.plano_fim).map((c) => ({ ...c, dias: Math.ceil((new Date(`${c.plano_fim}T00:00:00`) - new Date()) / 86400000) })).filter((c) => c.dias <= 30).sort((a, b) => a.dias - b.dias);
+  const valorRecebidoPlanos = clients.reduce((sum, c) => sum + Number(c.plano_valor || 0), 0);
 
   return (
     <>
@@ -1234,8 +1284,28 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-stub"><div className="mk-stub-label"><Users size={13} /> Clientes gerenciados</div><div className="mk-stub-value">{clients.length}</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><Wallet size={13} /> Milhas sob gestão</div><div className="mk-stub-value">{agg.totalMilhas.toLocaleString("pt-BR")}</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><TrendingUp size={13} /> Economia gerada (todos)</div><div className="mk-stub-value" style={{ color: agg.totalEconomia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(agg.totalEconomia)}</div></div>
-        <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendo.length || "—"}</div><div className="mk-stub-foot">{vencendo.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><DollarSign size={13} /> Valor recebido dos planos</div><div className="mk-stub-value" style={{ color: "var(--green)" }}>{formatBRL(valorRecebidoPlanos)}</div><div className="mk-stub-foot">Soma do valor dos planos cadastrados</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendoPlanos.length || "—"}</div><div className="mk-stub-foot">{vencendoPlanos.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Vencimentos próximos</div><div className="mk-stub-value">{agg.vencimentos.length || "—"}</div><div className="mk-stub-foot">Assinaturas, milhas e pontos em até 6 meses</div></div>
       </div>
+
+      <div className="mk-section-title"><h2>Vencimentos próximos — 6 meses</h2></div>
+      {loading ? <div className="mk-empty">Carregando…</div> : agg.vencimentos.length === 0 ? (
+        <div className="mk-empty">Nenhuma assinatura, milha ou ponto vencendo nos próximos 6 meses.</div>
+      ) : (
+        <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
+          <table className="mk-table">
+            <thead><tr><th>Cliente</th><th>Tipo</th><th>Programa/Assinatura</th><th>Vencimento</th><th>Prazo</th><th>Descrição</th></tr></thead>
+            <tbody>{agg.vencimentos.map((v) => (
+              <tr key={v.id}>
+                <td>{v.cliente}</td><td>{v.tipo}</td><td>{v.item}</td><td>{formatDate(v.data)}</td>
+                <td style={{ color: v.dias < 0 ? "var(--red)" : v.dias <= 30 ? "#FFB020" : "var(--ink)" }}>{v.dias < 0 ? `Vencido há ${Math.abs(v.dias)} dia(s)` : `${v.dias} dia(s)`}</td>
+                <td>{v.descricao || "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
 
       <div className="mk-section-title"><h2>Planejamento de Viagens</h2></div>
       {loading ? <div className="mk-empty">Carregando…</div> : agg.viagens.length === 0 ? (
@@ -1301,10 +1371,10 @@ function AdminAggregateDashboard({ clients }) {
         </div>
       )}
 
-      {vencendo.length > 0 && (
+      {vencendoPlanos.length > 0 && (
         <>
           <div className="mk-section-title"><h2>Planos vencendo</h2></div>
-          <div className="mk-stub">{vencendo.map((c) => (
+          <div className="mk-stub">{vencendoPlanos.map((c) => (
             <div className="mk-alert-row" key={c.id}><span>{c.nome || c.email}</span><span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span></div>
           ))}</div>
         </>
@@ -1330,8 +1400,16 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
     setLoading(true); setErr("");
     try {
       if (isEdit) {
+        const emailMudou = form.email.trim().toLowerCase() !== (initial.email || "").trim().toLowerCase();
+        if (emailMudou || form.senha) {
+          const { data, error } = await supabase.functions.invoke("clever-service", {
+            body: { action: "update_user", userId: initial.id, email: emailMudou ? form.email.trim() : undefined, password: form.senha || undefined },
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+        }
         const { error } = await supabase.from("profiles").update({
-          nome: form.nome, cpf: onlyDigits(form.cpf) || null, telefone: form.telefone || null,
+          nome: form.nome, email: form.email.trim(), cpf: onlyDigits(form.cpf) || null, telefone: form.telefone || null,
           plano_valor: form.planoValor || null, plano_parcelas: form.planoParcelas || null,
           plano_inicio: form.planoInicio || null, plano_fim: form.planoFim || null,
         }).eq("id", initial.id);
@@ -1361,11 +1439,12 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{isEdit ? "Editar cliente" : "Novo cliente"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Nome</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} /></div>
-        <div className="mk-form-row"><label>E-mail (login)</label><input type="email" value={form.email} disabled={isEdit} onChange={(e) => set("email", e.target.value)} /></div>
-        {!isEdit && <div className="mk-form-row"><label>Senha</label><input type="password" value={form.senha} onChange={(e) => set("senha", e.target.value)} minLength={6} /></div>}
+        <div className="mk-form-row"><label>E-mail (login)</label><input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></div>
         <div className="mk-form-cols">
-            <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
+          <div className="mk-form-row"><label>CPF (login alternativo)</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
+          <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
         </div>
+        <div className="mk-form-row"><label>{isEdit ? "Nova senha (opcional)" : "Senha"}</label><input type="password" value={form.senha} onChange={(e) => set("senha", e.target.value)} minLength={6} placeholder={isEdit ? "Deixe em branco para manter" : "Mínimo 6 caracteres"} /></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Plano — valor pago (R$)</label><input type="number" step="0.01" value={form.planoValor} onChange={(e) => set("planoValor", e.target.value)} /></div>
           <div className="mk-form-row"><label>Parcelas</label><input type="number" min="1" step="1" value={form.planoParcelas} onChange={(e) => set("planoParcelas", e.target.value)} placeholder="1" /></div>
@@ -1375,7 +1454,7 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
           <div className="mk-form-row"><label>Fim do plano</label><input type="date" value={form.planoFim} onChange={(e) => set("planoFim", e.target.value)} /></div>
         </div>
         {err && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{err}</div>}
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={loading || !form.nome || (!isEdit && (!form.email || form.senha.length < 6))} onClick={submit}>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={loading || !form.nome || !form.email || (!isEdit && form.senha.length < 6) || (isEdit && form.senha && form.senha.length < 6)} onClick={submit}>
           {loading ? "Salvando..." : "Salvar"}
         </button>
       </div>
@@ -1411,6 +1490,64 @@ function ResetPasswordModal({ client, onClose }) {
             <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={loading || senha.length < 6} onClick={submit}>{loading ? "Aguarde..." : "Salvar nova senha"}</button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ProfileSettingsModal({ currentEmail, onClose, onSaved }) {
+  const [email, setEmail] = useState(currentEmail || "");
+  const [senha, setSenha] = useState("");
+  const [confirmarSenha, setConfirmarSenha] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    setErr(""); setMsg("");
+    if (senha && senha.length < 6) { setErr("A nova senha deve ter pelo menos 6 caracteres."); return; }
+    if (senha && senha !== confirmarSenha) { setErr("As senhas não coincidem."); return; }
+    setLoading(true);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUser = authData?.user;
+      if (!currentUser) throw new Error("Usuário não encontrado.");
+      const attrs = {};
+      const emailMudou = email.trim().toLowerCase() !== (currentUser.email || "").trim().toLowerCase();
+      if (emailMudou) attrs.email = email.trim();
+      if (senha) attrs.password = senha;
+      if (Object.keys(attrs).length === 0) { setMsg("Nenhuma alteração para salvar."); setLoading(false); return; }
+
+      const { data, error } = await supabase.auth.updateUser(attrs);
+      if (error) throw error;
+
+      const emailAtualAuth = data?.user?.email || currentUser.email;
+      if (!emailMudou || emailAtualAuth?.toLowerCase() === email.trim().toLowerCase()) {
+        const { error: profileErr } = await supabase.from("profiles").update({ email: emailAtualAuth }).eq("id", currentUser.id);
+        if (profileErr) console.error(profileErr);
+      }
+      setSenha(""); setConfirmarSenha("");
+      setMsg(emailMudou && emailAtualAuth?.toLowerCase() !== email.trim().toLowerCase()
+        ? "Alteração solicitada. Confirme o novo e-mail na mensagem enviada pelo Supabase. A senha, se informada, já foi atualizada."
+        : "Perfil atualizado com sucesso.");
+      onSaved?.(emailAtualAuth);
+    } catch (e) {
+      setErr(e.message || "Erro ao atualizar o perfil.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+        <h3>Meu perfil <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>E-mail de login</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+        <div className="mk-form-row"><label>Nova senha</label><input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="Deixe em branco para manter" minLength={6} /></div>
+        {senha && <div className="mk-form-row"><label>Confirmar nova senha</label><input type="password" value={confirmarSenha} onChange={(e) => setConfirmarSenha(e.target.value)} minLength={6} /></div>}
+        {err && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{err}</div>}
+        {msg && <div className="mk-preview" style={{ color: "var(--green)" }}>{msg}</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={loading || !email} onClick={submit}>{loading ? "Salvando..." : "Salvar alterações"}</button>
       </div>
     </div>
   );
@@ -1478,6 +1615,7 @@ function AdminShell({ adminEmail, onSignOut }) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminName, setAdminName] = useState("");
+  const [showProfileForm, setShowProfileForm] = useState(false);
 
   const loadClients = () => {
     supabase.from("profiles").select("*").eq("is_admin", false).order("nome").then(({ data, error }) => {
@@ -1534,6 +1672,7 @@ function AdminShell({ adminEmail, onSignOut }) {
               </button>
               {switcherOpen && (
                 <div className="mk-switcher">
+                  <button className="mk-switcher-item" onClick={() => { setShowProfileForm(true); setSwitcherOpen(false); }}><Pencil size={13} style={{ marginRight: 7, verticalAlign: -2 }} /> Meu perfil</button>
                   <div className="mk-switcher-label">Ver como cliente</div>
                   {clients.length === 0 ? (
                     <div className="mk-field" style={{ padding: "8px 12px" }}>Nenhum cliente ainda</div>
@@ -1549,6 +1688,7 @@ function AdminShell({ adminEmail, onSignOut }) {
           {tab === "clientes" && <ClientesManager clients={clients} onChanged={loadClients} onView={(c) => setViewingClient(c)} />}
         </div>
       </div>
+      {showProfileForm && <ProfileSettingsModal currentEmail={adminEmail} onClose={() => setShowProfileForm(false)} onSaved={() => {}} />}
     </div>
   );
 }
