@@ -4,7 +4,7 @@ import {
   Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
-  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin
+  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu
 } from "lucide-react";
 
 const TIPOS_PROGRAMA = ["Aéreo", "Cartão", "Hotel"];
@@ -26,7 +26,6 @@ function inferTipo(a) {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const onlyDigits = (s) => (s || "").replace(/\D/g, "");
 const formatBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const formatNegativeBRL = (v) => `- ${formatBRL(Math.abs(Number(v) || 0))}`;
 const formatDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
 
@@ -76,52 +75,13 @@ function valorMilheiroPatrimonio(nome) {
   return 0;
 }
 
-function monthlyOccurrences(startIso, endIso) {
-  if (!startIso || !endIso) return 0;
-  const start = new Date(`${startIso}T12:00:00`);
-  const end = new Date(`${endIso}T12:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
-  let count = 0;
-  let y = start.getFullYear();
-  let m = start.getMonth();
-  const day = start.getDate();
-  while (count < 600) {
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    const occurrence = new Date(y, m, Math.min(day, lastDay), 12, 0, 0);
-    if (occurrence > end) break;
-    count += 1;
-    m += 1;
-    if (m > 11) { m = 0; y += 1; }
-  }
-  return count;
-}
-
-function elapsedSubscriptionLabel(startIso, endIso) {
-  if (!startIso) return "—";
-  const start = new Date(`${startIso}T12:00:00`);
-  const today = new Date();
-  const end = endIso ? new Date(`${endIso}T12:00:00`) : today;
-  const effectiveEnd = end < today ? end : today;
-  if (effectiveEnd < start) return "Ainda não iniciou";
-  let months = (effectiveEnd.getFullYear() - start.getFullYear()) * 12 + effectiveEnd.getMonth() - start.getMonth();
-  if (effectiveEnd.getDate() < start.getDate()) months -= 1;
-  months = Math.max(0, months);
-  if (months < 1) return "Menos de 1 mês";
-  if (months < 12) return `${months} ${months === 1 ? "mês" : "meses"}`;
-  const years = Math.floor(months / 12);
-  const rest = months % 12;
-  return `${years} ${years === 1 ? "ano" : "anos"}${rest ? ` e ${rest} ${rest === 1 ? "mês" : "meses"}` : ""}`;
-}
-
 // ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
 const MODULES = [
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard, fields: [
+      { key: "nome", label: "Assinatura", type: "text" },
       { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
-      { key: "milhasMes", label: "Milhas por mês", type: "number" },
       { key: "valorMensal", label: "Valor mensal", type: "currency" },
-      { key: "inicio", label: "Início", type: "date" },
       { key: "vencimento", label: "Vencimento", type: "date" },
-      { key: "descricao", label: "Descrição", type: "text", optional: true },
   ]},
   { key: "passageiros", label: "Passageiros", icon: User, fields: [
       { key: "nome", label: "Nome", type: "text" },
@@ -181,7 +141,6 @@ const MODULES = [
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "programas", label: "Programas", icon: Wallet },
-  { key: "proximasViagens", label: "Próximas Viagens", icon: MapPin },
   { key: "emissoes", label: "Emissões", icon: PlaneTakeoff },
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard },
   { key: "passageiros", label: "Passageiros", icon: User },
@@ -195,7 +154,7 @@ const NAV = [
   { key: "cpfs", label: "Controle de CPFs", icon: ShieldCheck },
 ];
 
-const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+const EMPTY_DB = { accounts: [], emissions: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
 
 // ---------- CSS compartilhado entre o painel do cliente e o do admin ----------
 const APP_CSS = `
@@ -264,11 +223,6 @@ const APP_CSS = `
   .mk-form-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
   .mk-form-row label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
   .mk-form-row input, .mk-form-row select, .mk-form-row textarea { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: var(--ink); }
-  .mk-form-row select option { background: #0F2049; color: #EAF1FF; }
-  .mk-form-row select:focus, .mk-form-row input:focus, .mk-form-row textarea:focus { outline: 2px solid rgba(94,208,255,0.45); outline-offset: 1px; border-color: var(--accent-2); }
-  .mk-check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 4px 0 10px; }
-  .mk-check-row input { width: auto; margin: 0; accent-color: var(--accent); }
-  .mk-negative { color: var(--red) !important; }
   .mk-form-row input:disabled { opacity: 0.5; }
   .mk-form-row input::placeholder { color: rgba(234,241,255,0.35); }
   .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -331,10 +285,7 @@ function renderCell(field, row, allData) {
     const found = (allData[field.relationTo] || []).find((r) => r.id === v);
     return found ? found[field.labelField] : "—";
   }
-  if (field.type === "currency") {
-    const num = Number(v) || 0;
-    return <span className={num < 0 ? "mk-negative" : ""}>{formatBRL(num)}</span>;
-  }
+  if (field.type === "currency") return formatBRL(v);
   if (field.type === "date") return formatDate(v);
   if (field.type === "number") return (Number(v) || 0).toLocaleString("pt-BR");
   return v || "—";
@@ -345,7 +296,7 @@ function DataModule({ schema, data, setData, allData }) {
   const [editing, setEditing] = useState(null);
 
   const save = (values) => {
-    if (editing) setData((prev) => prev.map((d) => (d.id === editing.id ? { ...editing, ...values, id: editing.id } : d)));
+    if (editing) setData((prev) => prev.map((d) => (d.id === editing.id ? { ...values, id: editing.id } : d)));
     else setData((prev) => [...prev, { ...values, id: uid() }]);
     setShowForm(false); setEditing(null);
   };
@@ -355,7 +306,7 @@ function DataModule({ schema, data, setData, allData }) {
     <>
       <div className="mk-section-title">
         <h2>{schema.label}</h2>
-        <button className="mk-btn" onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={15} /> {schema.key === "assinaturas" ? "Nova Assinatura" : "Nova entrada"}</button>
+        <button className="mk-btn" onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={15} /> Nova entrada</button>
       </div>
       {data.length === 0 ? (
         <div className="mk-empty">Nenhum registro em {schema.label.toLowerCase()} ainda.</div>
@@ -392,8 +343,7 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
   }, {});
   const [form, setForm] = useState(defaults);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const requiredTextFields = schema.fields.filter((f) => f.type === "text" && !f.optional);
-  const requiredOk = requiredTextFields.length === 0 || requiredTextFields.every((f) => !!form[f.key]);
+  const requiredOk = schema.fields.filter((f) => f.type === "text").every((f) => !!form[f.key]) || schema.fields.every((f) => f.type !== "text");
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
@@ -443,7 +393,6 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showCpf, setShowCpf] = useState({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showEmissionForm, setShowEmissionForm] = useState(false);
-  const [showTripForm, setShowTripForm] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -452,7 +401,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("nome, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
@@ -467,49 +416,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     return () => clearTimeout(timeout);
   }, [db, userId]);
 
-  useEffect(() => {
-    if (!db || !(db.assinaturas || []).length) return;
-    const today = new Date();
-    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    let changed = false;
-    let nextAccounts = [...(db.accounts || [])];
-
-    const nextAssinaturas = (db.assinaturas || []).map((assinatura) => {
-      const milhasMes = Number(assinatura.milhasMes || 0);
-      const valorMensal = Number(assinatura.valorMensal || 0);
-      if (!assinatura.programaId || !assinatura.inicio || milhasMes <= 0) return assinatura;
-
-      const limite = assinatura.vencimento && assinatura.vencimento < todayIso ? assinatura.vencimento : todayIso;
-      const devidos = monthlyOccurrences(assinatura.inicio, limite);
-      const creditados = Number(assinatura.creditosGerados || 0);
-      const novosCreditos = Math.max(0, devidos - creditados);
-      if (!novosCreditos) return assinatura;
-
-      const accountIndex = nextAccounts.findIndex((a) => a.id === assinatura.programaId);
-      if (accountIndex < 0) return assinatura;
-
-      const conta = nextAccounts[accountIndex];
-      const saldoAnterior = Number(conta.saldo || 0);
-      const custoAnterior = (saldoAnterior / 1000) * Number(conta.cpm || 0);
-      const milhasAdicionadas = novosCreditos * milhasMes;
-      const custoAdicionado = novosCreditos * valorMensal;
-      const novoSaldo = saldoAnterior + milhasAdicionadas;
-      const novoCpm = novoSaldo > 0 ? ((custoAnterior + custoAdicionado) / novoSaldo) * 1000 : Number(conta.cpm || 0);
-
-      nextAccounts[accountIndex] = { ...conta, saldo: novoSaldo, cpm: Number(novoCpm.toFixed(4)) };
-      changed = true;
-      return { ...assinatura, creditosGerados: devidos, ultimoCredito: limite };
-    });
-
-    if (changed) setDb((prev) => ({ ...prev, accounts: nextAccounts, assinaturas: nextAssinaturas }));
-  }, [db]);
-
   const updateSlice = (key) => (updater) =>
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
 
-  const accounts = db?.accounts || [], emissions = db?.emissions || [], proximasViagens = db?.proximasViagens || [];
-  const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions"), setProximasViagens = updateSlice("proximasViagens");
-  const displayName = profile?.nome?.trim() || userEmail;
+  const accounts = db?.accounts || [], emissions = db?.emissions || [];
+  const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions");
 
   const emissionsCalc = useMemo(() => emissions.map((em) => {
     const conta = accounts.find((a) => a.id === em.accountId);
@@ -601,13 +512,6 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
   const addEmission = (data) => setEmissions((prev) => [...prev, { id: uid(), ...data }]);
   const removeEmission = (id) => setEmissions((prev) => prev.filter((e) => e.id !== id));
-  const addTrip = (data) => setProximasViagens((prev) => [...prev, { id: uid(), ...data }]);
-  const removeTrip = (id) => setProximasViagens((prev) => prev.filter((v) => v.id !== id));
-  const tripsSorted = [...proximasViagens].sort((a, b) => {
-    if (a.semData && !b.semData) return 1;
-    if (!a.semData && b.semData) return -1;
-    return (a.data || "9999-12-31").localeCompare(b.data || "9999-12-31");
-  });
 
   const activeModule = MODULES.find((m) => m.key === tab);
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
@@ -649,7 +553,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
               <button className="mk-menu-toggle" onClick={() => setSidebarOpen(true)}><Menu size={18} /></button>
               <h2>{currentLabel}</h2>
             </div>
-            <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{displayName}</span></div>
+            <div className="mk-userpill"><User size={14} /> <span className="mk-userpill-text">{userEmail}</span></div>
           </div>
 
           {impersonating && (
@@ -679,7 +583,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 </div>
                 <div className="mk-stub">
                   <div className="mk-stub-label"><Wallet size={13} /> Custo Total</div>
-                  <div className="mk-stub-value mk-negative">{formatNegativeBRL(totals.custoTotal)}</div>
+                  <div className="mk-stub-value">{formatBRL(totals.custoTotal)}</div>
                   <div className="mk-stub-foot">Milhas/pontos + clubes + taxas + mensalidade do plano</div>
                 </div>
                 <div className="mk-stub">
@@ -732,7 +636,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <button className="mk-btn" onClick={() => setShowAccountForm(true)}><Plus size={15} /> Novo programa</button>
               </div>
               {accounts.length === 0 ? (
-                <div className="mk-empty">Nenhum programa cadastrado. Clique em "Novo programa" para começar.</div>
+                <div className="mk-empty">Nenhum programa cadastrado. Clique em "Novo programa" para registrar o primeiro CPF.</div>
               ) : (
                 <div className="mk-card-list">
                   {accounts.map((a) => (
@@ -742,48 +646,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                           <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span></span>
                           <button className="mk-iconbtn" onClick={() => removeAccount(a.id)}><Trash2 size={15} /></button>
                         </div>
-                        {a.cpf && (
-                          <div className="mk-field" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
-                            CPF: <b>{showCpf[a.id] ? a.cpf : maskCpf(a.cpf)}</b>
-                            <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [a.id]: !s[a.id] }))}>{showCpf[a.id] ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-                          </div>
-                        )}
+                        <div className="mk-field" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+                          CPF: <b>{showCpf[a.id] ? a.cpf : maskCpf(a.cpf)}</b>
+                          <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [a.id]: !s[a.id] }))}>{showCpf[a.id] ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+                        </div>
                         <div className="mk-field">Tipo: <b>{inferTipo(a)}</b> · Custo médio: <b>{formatBRL(a.cpm)} / milheiro</b></div>
                       </div>
                       <div className="mk-ticket-side">
                         <div><div className="mk-field" style={{ textAlign: "right" }}>Saldo</div><div className="mk-mono" style={{ fontSize: 19, fontWeight: 700 }}>{Number(a.saldo).toLocaleString("pt-BR")}</div></div>
                         <div className="mk-field">Validade: {formatDate(a.validade)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {tab === "proximasViagens" && (
-            <>
-              <div className="mk-section-title">
-                <h2>Próximas Viagens</h2>
-                <button className="mk-btn" onClick={() => setShowTripForm(true)}><Plus size={15} /> Nova Viagem</button>
-              </div>
-              {tripsSorted.length === 0 ? (
-                <div className="mk-empty">Nenhuma próxima viagem cadastrada.</div>
-              ) : (
-                <div className="mk-card-list">
-                  {tripsSorted.map((v) => (
-                    <div className="mk-ticket" key={v.id}>
-                      <div className="mk-ticket-main">
-                        <div className="mk-ticket-row">
-                          <span className="mk-ticket-title"><MapPin size={15} /> {v.destino}</span>
-                          <button className="mk-iconbtn" onClick={() => removeTrip(v.id)}><Trash2 size={15} /></button>
-                        </div>
-                        <div className="mk-field">Partida: <b>{v.partida || "—"}</b> · Passageiros: <b>{Number(v.passageiros || 1)}</b></div>
-                        <div className="mk-field" style={{ marginTop: 5 }}>Data: <b>{v.semData ? "Sem data definida" : formatDate(v.data)}</b>{!v.semData && Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</div>
-                      </div>
-                      <div className="mk-ticket-side">
-                        <CalendarCheck size={18} />
-                        <div className="mk-field">{v.semData ? "A definir" : formatDate(v.data)}</div>
                       </div>
                     </div>
                   ))}
@@ -865,13 +736,12 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
       {showAccountForm && <AccountFormModal onClose={() => setShowAccountForm(false)} onSave={(d) => { addAccount(d); setShowAccountForm(false); }} />}
       {showEmissionForm && <EmissionFormModal accounts={accounts} onClose={() => setShowEmissionForm(false)} onSave={(d) => { addEmission(d); setShowEmissionForm(false); }} />}
-      {showTripForm && <TripFormModal onClose={() => setShowTripForm(false)} onSave={(d) => { addTrip(d); setShowTripForm(false); }} />}
     </div>
   );
 }
 
 function AccountFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", saldo: "", cpm: "", validade: "" });
+  const [form, setForm] = useState({ tipo: "Aéreo", marca: MARCAS_POR_TIPO["Aéreo"][0], titular: "", cpf: "", saldo: "", cpm: "", validade: "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
   return (
@@ -885,48 +755,13 @@ function AccountFormModal({ onClose, onSave }) {
           <select value={form.marca} onChange={(e) => set("marca", e.target.value)}>{MARCAS_POR_TIPO[form.tipo].map((m) => <option key={m} value={m}>{m}</option>)}</select>
         </div>
         <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
+        <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
         <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
-      </div>
-    </div>
-  );
-}
-
-
-function TripFormModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ destino: "", partida: "", semData: false, data: "", flexibilidade: "0", passageiros: "1" });
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const canSave = form.destino && form.partida && (form.semData || form.data);
-
-  return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
-      <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
-        <h3>Nova Viagem <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-        <div className="mk-form-row"><label>Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: Lisboa" /></div>
-        <div className="mk-form-row"><label>Partida</label><input value={form.partida} onChange={(e) => set("partida", e.target.value)} placeholder="Ex.: Belo Horizonte" /></div>
-        <label className="mk-check-row"><input type="checkbox" checked={form.semData} onChange={(e) => set("semData", e.target.checked)} /> Sem data definida</label>
-        {!form.semData && (
-          <>
-            <div className="mk-form-row"><label>Data da viagem</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
-            <div className="mk-form-row"><label>Flexibilidade</label>
-              <select value={form.flexibilidade} onChange={(e) => set("flexibilidade", e.target.value)}>
-                <option value="0">Sem flexibilidade</option>
-                <option value="3">Flexibilidade +3</option>
-                <option value="7">Flexibilidade +7</option>
-              </select>
-            </div>
-          </>
-        )}
-        <div className="mk-form-row"><label>Número de passageiros</label>
-          <select value={form.passageiros} onChange={(e) => set("passageiros", e.target.value)}>
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, data: form.semData ? "" : form.data, flexibilidade: form.semData ? "0" : form.flexibilidade })}>Salvar viagem</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, cpf: form.cpf, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>Salvar programa</button>
       </div>
     </div>
   );
@@ -972,46 +807,29 @@ function EmissionFormModal({ accounts, onClose, onSave }) {
 // ---------- Dashboard agregada do admin ----------
 function AdminAggregateDashboard({ clients }) {
   const [loading, setLoading] = useState(true);
-  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [], viagens: [], assinaturas: [] });
+  const [agg, setAgg] = useState({ totalMilhas: 0, totalEconomia: 0, porCliente: [] });
 
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from("app_data").select("user_id, data");
       if (error) { console.error(error); setLoading(false); return; }
       let totalMilhas = 0, totalEconomia = 0;
-      const viagens = [];
-      const assinaturas = [];
       const porCliente = (data || []).map((row) => {
         const d = row.data || {};
         const accs = d.accounts || [];
         const ems = d.emissions || [];
-        const client = clients.find((c) => c.id === row.user_id);
-        const nomeCliente = client?.nome || client?.email || "Cliente removido";
-        const milhas = accs.reduce((sum, a) => sum + Number(a.saldo || 0), 0);
-        const economia = ems.reduce((sum, e) => {
+        const milhas = accs.reduce((s, a) => s + Number(a.saldo || 0), 0);
+        const economia = ems.reduce((s, e) => {
           const conta = accs.find((a) => a.id === e.accountId);
           const cpm = conta ? Number(conta.cpm) : 0;
           const custo = (Number(e.milhas) / 1000) * cpm + Number(e.taxas || 0);
-          return sum + (Number(e.valorMercado || 0) - custo);
+          return s + (Number(e.valorMercado || 0) - custo);
         }, 0);
-
-        (d.proximasViagens || []).forEach((v) => viagens.push({ ...v, userId: row.user_id, cliente: nomeCliente }));
-        (d.assinaturas || []).forEach((a) => {
-          const programa = accs.find((acc) => acc.id === a.programaId);
-          assinaturas.push({ ...a, userId: row.user_id, cliente: nomeCliente, programa: programa?.programa || "Programa removido" });
-        });
-
         totalMilhas += milhas; totalEconomia += economia;
-        return { id: row.user_id, nome: nomeCliente, milhas, economia };
+        const client = clients.find((c) => c.id === row.user_id);
+        return { id: row.user_id, nome: client?.nome || client?.email || "Cliente removido", milhas, economia };
       }).filter((c) => c.milhas > 0 || c.economia !== 0).sort((a, b) => b.milhas - a.milhas);
-
-      viagens.sort((a, b) => {
-        if (a.semData && !b.semData) return 1;
-        if (!a.semData && b.semData) return -1;
-        return (a.data || "9999-12-31").localeCompare(b.data || "9999-12-31");
-      });
-      assinaturas.sort((a, b) => (a.vencimento || "9999-12-31").localeCompare(b.vencimento || "9999-12-31"));
-      setAgg({ totalMilhas, totalEconomia, porCliente, viagens, assinaturas });
+      setAgg({ totalMilhas, totalEconomia, porCliente });
       setLoading(false);
     })();
   }, [clients]);
@@ -1027,43 +845,6 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendo.length || "—"}</div><div className="mk-stub-foot">{vencendo.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
       </div>
 
-      <div className="mk-section-title"><h2>Próximas Viagens</h2></div>
-      {loading ? <div className="mk-empty">Carregando…</div> : agg.viagens.length === 0 ? (
-        <div className="mk-empty">Nenhuma próxima viagem cadastrada pelos clientes.</div>
-      ) : (
-        <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
-          <table className="mk-table">
-            <thead><tr><th>Cliente</th><th>Destino</th><th>Partida</th><th>Data</th><th>Flexibilidade</th><th>Passageiros</th></tr></thead>
-            <tbody>{agg.viagens.map((v) => (
-              <tr key={`${v.userId}-${v.id}`}>
-                <td>{v.cliente}</td><td>{v.destino}</td><td>{v.partida || "—"}</td>
-                <td>{v.semData ? "Sem data definida" : formatDate(v.data)}</td>
-                <td>{!v.semData && Number(v.flexibilidade) > 0 ? `+${v.flexibilidade} dias` : "—"}</td>
-                <td>{Number(v.passageiros || 1)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="mk-section-title"><h2>Assinaturas dos clientes</h2></div>
-      {loading ? <div className="mk-empty">Carregando…</div> : agg.assinaturas.length === 0 ? (
-        <div className="mk-empty">Nenhuma assinatura cadastrada pelos clientes.</div>
-      ) : (
-        <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
-          <table className="mk-table">
-            <thead><tr><th>Cliente</th><th>Programa</th><th>Milhas/mês</th><th>Mensalidade</th><th>Tempo de assinatura</th><th>Início</th><th>Vencimento</th><th>Descrição</th></tr></thead>
-            <tbody>{agg.assinaturas.map((a) => (
-              <tr key={`${a.userId}-${a.id}`}>
-                <td>{a.cliente}</td><td>{a.programa}</td><td>{Number(a.milhasMes || 0).toLocaleString("pt-BR")}</td>
-                <td className="mk-negative">{formatNegativeBRL(a.valorMensal)}</td>
-                <td>{elapsedSubscriptionLabel(a.inicio, a.vencimento)}</td><td>{formatDate(a.inicio)}</td><td>{formatDate(a.vencimento)}</td><td>{a.descricao || "—"}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-
       <div className="mk-section-title"><h2>Clientes por volume de milhas</h2></div>
       {loading ? (
         <div className="mk-empty">Carregando…</div>
@@ -1073,9 +854,15 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-table-wrap" style={{ marginBottom: 22 }}>
           <table className="mk-table">
             <thead><tr><th>Cliente</th><th>Milhas</th><th>Economia</th></tr></thead>
-            <tbody>{agg.porCliente.map((c) => (
-              <tr key={c.id}><td>{c.nome}</td><td>{c.milhas.toLocaleString("pt-BR")}</td><td style={{ color: c.economia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(c.economia)}</td></tr>
-            ))}</tbody>
+            <tbody>
+              {agg.porCliente.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.nome}</td>
+                  <td>{c.milhas.toLocaleString("pt-BR")}</td>
+                  <td style={{ color: c.economia >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(c.economia)}</td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       )}
@@ -1083,11 +870,20 @@ function AdminAggregateDashboard({ clients }) {
       {vencendo.length > 0 && (
         <>
           <div className="mk-section-title"><h2>Planos vencendo</h2></div>
-          <div className="mk-stub">{vencendo.map((c) => (
-            <div className="mk-alert-row" key={c.id}><span>{c.nome || c.email}</span><span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span></div>
-          ))}</div>
+          <div className="mk-stub">
+            {vencendo.map((c) => (
+              <div className="mk-alert-row" key={c.id}>
+                <span>{c.nome || c.email}</span>
+                <span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
+
+      <div className="mk-empty" style={{ marginTop: 22 }}>
+        Essa é uma primeira versão da dashboard de admin — me conta quais outros indicadores você quer ver aqui que eu expando.
+      </div>
     </>
   );
 }
@@ -1143,7 +939,8 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
         <div className="mk-form-row"><label>E-mail (login)</label><input type="email" value={form.email} disabled={isEdit} onChange={(e) => set("email", e.target.value)} /></div>
         {!isEdit && <div className="mk-form-row"><label>Senha</label><input type="password" value={form.senha} onChange={(e) => set("senha", e.target.value)} minLength={6} /></div>}
         <div className="mk-form-cols">
-            <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
+          <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", e.target.value)} placeholder="000.000.000-00" /></div>
+          <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", e.target.value)} /></div>
         </div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Plano — valor pago (R$)</label><input type="number" step="0.01" value={form.planoValor} onChange={(e) => set("planoValor", e.target.value)} /></div>
@@ -1256,7 +1053,6 @@ function AdminShell({ adminEmail, onSignOut }) {
   const [viewingClient, setViewingClient] = useState(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [adminName, setAdminName] = useState("");
 
   const loadClients = () => {
     supabase.from("profiles").select("*").eq("is_admin", false).order("nome").then(({ data, error }) => {
@@ -1265,9 +1061,6 @@ function AdminShell({ adminEmail, onSignOut }) {
     });
   };
   useEffect(loadClients, []);
-  useEffect(() => {
-    supabase.from("profiles").select("nome").eq("email", adminEmail).maybeSingle().then(({ data }) => setAdminName(data?.nome || ""));
-  }, [adminEmail]);
 
   if (viewingClient) {
     return (
@@ -1309,7 +1102,7 @@ function AdminShell({ adminEmail, onSignOut }) {
             </div>
             <div style={{ position: "relative" }}>
               <button className="mk-userpill" style={{ cursor: "pointer" }} onClick={() => setSwitcherOpen((s) => !s)}>
-                <User size={14} /> <span className="mk-userpill-text">{adminName || adminEmail}</span> <ChevronDown size={14} />
+                <User size={14} /> <span className="mk-userpill-text">{adminEmail}</span> <ChevronDown size={14} />
               </button>
               {switcherOpen && (
                 <div className="mk-switcher">
