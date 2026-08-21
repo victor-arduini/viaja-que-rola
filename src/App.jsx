@@ -10,11 +10,11 @@ import {
 const TIPOS_PROGRAMA = ["Aéreo", "Cartão", "Hotel"];
 const MARCAS_POR_TIPO = {
   "Aéreo": ["Azul", "Latam", "Ibéria", "Smiles", "Tap", "Outro"],
-  "Cartão": ["Átomos", "Caixa", "Coopera", "Curtaí", "Esfera", "Itaú", "Livelo", "Outro"],
+  "Cartão": ["Átomos", "Caixa", "Coopera", "Curtaí", "Esfera", "Itaú", "Livelo", "Loop", "Outro"],
   "Hotel": ["All Accor", "Outro"],
 };
 // Contas criadas antes dessa estrutura não têm "tipo" salvo — infere pela marca pra não quebrar os totais.
-const CARTAO_MARCAS = ["átomos", "atomos", "caixa", "coopera", "curtaí", "curtai", "esfera", "itaú", "itau", "livelo"];
+const CARTAO_MARCAS = ["átomos", "atomos", "caixa", "coopera", "curtaí", "curtai", "esfera", "itaú", "itau", "livelo", "loop"];
 const HOTEL_MARCAS = ["accor"];
 function inferTipo(a) {
   if (a.tipo) return a.tipo;
@@ -204,12 +204,12 @@ const APP_CSS = `
     color-scheme: dark;
     font-family: 'Space Grotesk', sans-serif;
     background: radial-gradient(circle at 15% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
-    color: var(--ink); min-height: 100%; box-sizing: border-box; border-radius: 16px; overflow: hidden;
+    color: var(--ink); min-height: 100vh; box-sizing: border-box; overflow: hidden;
   }
   .mk-root * { box-sizing: border-box; }
   .mk-mono { font-family: 'IBM Plex Mono', monospace; }
   .mk-display { font-family: 'Sora', sans-serif; font-weight: 800; letter-spacing: -0.3px; }
-  .mk-app { display: flex; align-items: stretch; min-height: 100%; }
+  .mk-app { display: flex; align-items: stretch; min-height: 100vh; }
   .mk-sidebar { width: 224px; flex-shrink: 0; background: rgba(3,7,16,0.55); border-right: 1px solid rgba(94,208,255,0.1); padding: 20px 12px; display: flex; flex-direction: column; }
   .mk-sidebar-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; padding: 0 6px; }
   .mk-logo-badge { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); transform: rotate(-6deg); flex-shrink: 0; }
@@ -1026,9 +1026,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
 function AccountFormModal({ initial, onClose, onSave }) {
   const initialTipo = initial ? inferTipo(initial) : "Aéreo";
-  const [form, setForm] = useState({ tipo: initialTipo, marca: initial?.programa || MARCAS_POR_TIPO[initialTipo][0], titular: initial?.titular || "", saldo: initial?.saldo ?? "", cpm: initial?.cpm ?? "", validade: initial?.validade || "" });
+  const initialIsCustom = initial && !MARCAS_POR_TIPO[initialTipo].includes(initial.programa);
+  const [form, setForm] = useState({
+    tipo: initialTipo,
+    marca: initialIsCustom ? "Outro" : (initial?.programa || MARCAS_POR_TIPO[initialTipo][0]),
+    outroTexto: initialIsCustom ? (initial?.programa || "") : "",
+    titular: initial?.titular || "",
+    saldo: initial?.saldo ?? "",
+    cpm: initial?.cpm ?? "",
+    validade: initial?.validade || "",
+  });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0] }));
+  const setTipo = (novoTipo) => setForm((f) => ({ ...f, tipo: novoTipo, marca: MARCAS_POR_TIPO[novoTipo][0], outroTexto: "" }));
+  const isOutro = form.marca === "Outro";
+  const programaFinal = isOutro ? form.outroTexto.trim() : form.marca;
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
@@ -1039,13 +1050,16 @@ function AccountFormModal({ initial, onClose, onSave }) {
         <div className="mk-form-row"><label>Marca</label>
           <select value={form.marca} onChange={(e) => set("marca", e.target.value)}>{MARCAS_POR_TIPO[form.tipo].map((m) => <option key={m} value={m}>{m}</option>)}</select>
         </div>
+        {isOutro && (
+          <div className="mk-form-row"><label>Qual programa?</label><input value={form.outroTexto} onChange={(e) => set("outroTexto", e.target.value)} placeholder="Digite o nome do programa" /></div>
+        )}
         <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
         <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo} onClick={() => onSave({ tipo: form.tipo, programa: form.marca, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>{initial ? "Salvar alterações" : "Salvar programa"}</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo || (isOutro && !form.outroTexto.trim())} onClick={() => onSave({ tipo: form.tipo, programa: programaFinal, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>{initial ? "Salvar alterações" : "Salvar programa"}</button>
       </div>
     </div>
   );
@@ -1135,7 +1149,7 @@ function EmissionFormModal({ initial, accounts, onClose, onSave }) {
 }
 
 function HotelReservationFormModal({ initial, accounts, onClose, onSave }) {
-  const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel" || (a.programa || "").toLowerCase().includes("accor"));
+  const eligibleAccounts = accounts;
   const initialIsResgate = initial?.origemMilhas === "resgate";
   const [form, setForm] = useState({
     hotel: initial?.hotel || initial?.destino || "",
