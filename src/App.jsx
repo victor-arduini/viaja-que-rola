@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabaseClient";
 import {
-  Plane, Wallet, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
+  Plane, Wallet, WalletCards, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
   Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel
@@ -115,6 +115,10 @@ function elapsedSubscriptionLabel(startIso, endIso) {
 
 // ---------- Config-driven modules (sidebar items reproduzidos genericamente) ----------
 const MODULES = [
+  { key: "cartoesCredito", label: "Cartões de Crédito", icon: WalletCards, fields: [
+      { key: "nome", label: "Nome", type: "text" },
+      { key: "cartaoCredito", label: "Cartão de Crédito", type: "text" },
+  ]},
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard, fields: [
       { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
       { key: "milhasMes", label: "Milhas por mês", type: "number" },
@@ -181,6 +185,7 @@ const MODULES = [
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "programas", label: "Programas", icon: Wallet },
+  { key: "cartoesCredito", label: "Cartões de Crédito", icon: WalletCards },
   { key: "proximasViagens", label: "Planejamento de Viagens", icon: MapPin },
   { key: "emissoes", label: "Emissões", icon: PlaneTakeoff },
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard },
@@ -192,7 +197,7 @@ const NAV = [
   { key: "vendasDeMilhas", label: "Vendas de Milhas", icon: DollarSign },
 ];
 
-const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], cartoesCredito: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
 
 // ---------- CSS compartilhado entre o painel do cliente e o do admin ----------
 const APP_CSS = `
@@ -723,7 +728,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const tripsSorted = [...proximasViagens].sort((a, b) => {
     if (a.semData && !b.semData) return 1;
     if (!a.semData && b.semData) return -1;
-    return (a.data || "9999-12-31").localeCompare(b.data || "9999-12-31");
+    return (a.dataIda || a.data || "9999-12-31").localeCompare(b.dataIda || b.data || "9999-12-31");
   });
 
   const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao"].includes(m.key));
@@ -908,11 +913,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                           </span>
                         </div>
                         <div className="mk-field">Partida: <b>{v.partida || "—"}</b> · Passageiros: <b>{Number(v.passageiros || 1)}</b></div>
-                        <div className="mk-field" style={{ marginTop: 5 }}>Data: <b>{v.semData ? "Sem data definida" : formatDate(v.data)}</b>{!v.semData && Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</div>
+                        <div className="mk-field" style={{ marginTop: 5 }}>
+                          {v.semData ? <b>Sem data definida</b> : <>Ida: <b>{formatDate(v.dataIda || v.data)}</b> · Volta: <b>{formatDate(v.dataVolta)}</b>{Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</>}
+                        </div>
+                        {v.observacao && <div className="mk-field" style={{ marginTop: 5 }}>Obs: {v.observacao}</div>}
                       </div>
                       <div className="mk-ticket-side">
                         <CalendarCheck size={18} />
-                        <div className="mk-field">{v.semData ? "A definir" : formatDate(v.data)}</div>
+                        <div className="mk-field">{v.semData ? "A definir" : formatDate(v.dataIda || v.data)}</div>
                       </div>
                     </div>
                   ))}
@@ -1067,24 +1075,38 @@ function AccountFormModal({ initial, onClose, onSave }) {
 
 
 function TripFormModal({ initial, onClose, onSave }) {
-  const [form, setForm] = useState({ destino: initial?.destino || "", partida: initial?.partida || "", semData: !!initial?.semData, data: initial?.data || "", flexibilidade: String(initial?.flexibilidade ?? "0"), passageiros: String(initial?.passageiros ?? "1") });
+  const [form, setForm] = useState({
+    destino: initial?.destino || "",
+    partida: initial?.partida || "",
+    semData: !!initial?.semData,
+    dataIda: initial?.dataIda || initial?.data || "",
+    dataVolta: initial?.dataVolta || "",
+    flexibilidade: String(initial?.flexibilidade ?? "0"),
+    passageiros: String(initial?.passageiros ?? "1"),
+    observacao: initial?.observacao || "",
+  });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const canSave = form.destino && form.partida && (form.semData || form.data);
+  const canSave = form.destino && form.partida && (form.semData || form.dataIda);
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar Viagem" : "Nova Viagem"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-        <div className="mk-form-row"><label>Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: Lisboa" /></div>
-        <div className="mk-form-row"><label>Partida</label><input value={form.partida} onChange={(e) => set("partida", e.target.value)} placeholder="Ex.: Belo Horizonte" /></div>
+        <div className="mk-form-row"><label>Destino - Aeroporto</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: Lisboa (LIS)" /></div>
+        <div className="mk-form-row"><label>Partida - Aeroporto</label><input value={form.partida} onChange={(e) => set("partida", e.target.value)} placeholder="Ex.: Belo Horizonte (CNF)" /></div>
         <label className="mk-check-row"><input type="checkbox" checked={form.semData} onChange={(e) => set("semData", e.target.checked)} /> Sem data definida</label>
         {!form.semData && (
           <>
-            <div className="mk-form-row"><label>Data da viagem</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+            <div className="mk-form-cols">
+              <div className="mk-form-row"><label>Data da Ida</label><input type="date" value={form.dataIda} onChange={(e) => set("dataIda", e.target.value)} /></div>
+              <div className="mk-form-row"><label>Data da Volta</label><input type="date" value={form.dataVolta} onChange={(e) => set("dataVolta", e.target.value)} /></div>
+            </div>
             <div className="mk-form-row"><label>Flexibilidade</label>
               <select value={form.flexibilidade} onChange={(e) => set("flexibilidade", e.target.value)}>
                 <option value="0">Sem flexibilidade</option>
+                <option value="1">Flexibilidade +1</option>
                 <option value="3">Flexibilidade +3</option>
+                <option value="5">Flexibilidade +5</option>
                 <option value="7">Flexibilidade +7</option>
               </select>
             </div>
@@ -1095,7 +1117,8 @@ function TripFormModal({ initial, onClose, onSave }) {
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, data: form.semData ? "" : form.data, flexibilidade: form.semData ? "0" : form.flexibilidade })}>{initial ? "Salvar alterações" : "Salvar viagem"}</button>
+        <div className="mk-form-row"><label>Observação</label><textarea rows="3" value={form.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Comentários, preferências de horário, etc." /></div>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, dataIda: form.semData ? "" : form.dataIda, dataVolta: form.semData ? "" : form.dataVolta, flexibilidade: form.semData ? "0" : form.flexibilidade })}>{initial ? "Salvar alterações" : "Salvar viagem"}</button>
       </div>
     </div>
   );
