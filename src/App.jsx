@@ -1,11 +1,110 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
+import SignatureCanvas from "react-signature-canvas";
 import {
   Plane, Wallet, WalletCards, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
-  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel
+  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel, PenTool, CheckCircle2
 } from "lucide-react";
+
+// Texto do contrato oficial. Dados do CONTRATANTE são preenchidos automaticamente
+// a partir do cadastro do cliente. Dados do CONTRATADO (empresa) seguem como
+// placeholder até Victor enviar CNPJ, endereço e e-mail comercial.
+const contratoTexto = (profile, userEmail) => {
+  const nome = profile?.nome || "________________";
+  const cpf = formatCpfFull(profile?.cpf);
+  const telefone = profile?.telefone || "________________";
+  const dataHoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const diaVencimento = profile?.plano_inicio ? new Date(`${profile.plano_inicio}T00:00:00`).getDate() : null;
+  const vencimentoTexto = diaVencimento
+    ? `todo dia ${diaVencimento} de cada mês, correspondente ao dia de início do plano contratado (${formatDate(profile.plano_inicio)})`
+    : "conforme o dia de início do plano contratado, informado no cadastro do CONTRATANTE";
+  return `CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE CONSULTORIA E GESTÃO ESTRATÉGICA DE MILHAS E PROGRAMAS DE FIDELIDADE
+
+PARTES
+
+CONTRATANTE: ${nome}, CPF nº ${cpf}, RG nº ________________, e-mail ${userEmail || "________________"} e telefone/WhatsApp ${telefone}.
+
+CONTRATADO: Rondas for You LTDA, CNPJ nº 22.314.784/0001-65, com sede na Rua Manaus, 601 - São Lucas, Belo Horizonte/MG, e-mail rondas4you@gmail.com, neste ato representado por Victor Arduini.
+
+As partes celebram este contrato, conforme as cláusulas seguintes.
+
+1. OBJETO E LIMITES DO SERVIÇO
+
+1.1. O CONTRATADO prestará consultoria e gestão estratégica em programas de fidelidade, milhas aéreas, pontos de cartões e benefícios relacionados a viagens, incluindo planejamento, análise de promoções, orientação sobre aquisição e uso de pontos, cartões, passagens, hospedagens, upgrades e benefícios.
+
+1.2. Mediante necessidade e autorização específica do CONTRATANTE, o CONTRATADO poderá prestar apoio operacional em contas e programas do cliente. Cada operação que gere custo, transferência, resgate ou emissão dependerá de aprovação prévia e comprovável, contendo, quando aplicável, valores, quantidade de pontos, passageiros, datas e condições relevantes.
+
+1.3. O serviço constitui obrigação de meio. O CONTRATADO não promete economia mínima, aprovação de cartão, disponibilidade, tarifa, bônus, upgrade ou resultado específico, pois essas condições dependem de terceiros e podem mudar sem aviso.
+
+1.4. Não estão incluídos venda própria de passagens ou pacotes, obtenção de vistos, transporte, hospedagem, seguro, locação de veículos, suporte durante a viagem ou plantão permanente. O CONTRATADO não substitui companhias, hotéis, bancos, programas de fidelidade ou demais fornecedores.
+
+2. OBRIGAÇÕES DAS PARTES
+
+2.1. O CONTRATADO deverá agir com boa-fé e diligência, prestar as orientações contratadas, solicitar aprovação antes das operações previstas na cláusula 1.2, guardar sigilo e informar ao cliente os riscos relevantes conhecidos no momento da recomendação.
+
+2.2. O CONTRATANTE deverá fornecer informações e documentos corretos e atualizados; manter suas contas, documentos e meios de pagamento regulares; conferir nomes, datas, documentos, passageiros, custos e condições antes de aprovar; responder em tempo hábil; cumprir regras dos programas e realizar os pagamentos deste contrato e das operações autorizadas.
+
+2.3. O CONTRATANTE responde por prejuízos causados por informação incorreta, aprovação equivocada, atraso na resposta, indisponibilidade de saldo ou meio de pagamento, uso contrário às regras dos programas ou omissão de fato relevante. O CONTRATADO responde por danos diretamente decorrentes de dolo ou falha própria comprovada, nos limites da legislação aplicável.
+
+3. AUTORIZAÇÕES, COMUNICAÇÕES E SEGURANÇA
+
+3.1. WhatsApp, e-mail e plataforma de assinatura indicados pelas partes serão meios válidos de comunicação, solicitação e prova de aprovação.
+
+3.2. O CONTRATADO não realizará operação financeira ou movimentação de pontos sem autorização prévia. A demora do cliente poderá causar perda de disponibilidade ou alteração das condições, sem responsabilidade do CONTRATADO.
+
+3.3. O cliente deverá priorizar autenticação em dois fatores e acessos temporários. Quando uma senha for indispensável, deverá transmiti-la por meio seguro, alterá-la após o uso e jamais reutilizá-la em outros serviços. O CONTRATADO não solicitará senha bancária, PIN ou código de cartão.
+
+4. TERCEIROS E LIMITAÇÃO DE RESPONSABILIDADE
+
+4.1. O CONTRATADO não responde por fato atribuível exclusivamente a companhias aéreas, hotéis, bancos, emissores de cartão, programas de fidelidade ou outros terceiros, como alteração de regras, tarifas ou disponibilidade; cancelamento; atraso; overbooking; expiração ou desvalorização de pontos; recusa de emissão, bônus, upgrade ou crédito; falha de sistema; suspensão de conta; ou caso fortuito e força maior.
+
+4.2. Esta cláusula não exclui responsabilidade que a lei considere inderrogável nem danos comprovadamente causados por informação incorreta, operação não autorizada, dolo ou falha do próprio CONTRATADO.
+
+5. PREÇO, PAGAMENTO E INADIMPLÊNCIA
+
+5.1. O preço total pelos 12 meses de serviço é de R$ 3.000,00, pagável em até 12 parcelas por link de pagamento ou à vista via PIX. Custos de passagens, hotéis, pontos, taxas e demais fornecedores não estão incluídos e serão suportados diretamente pelo CONTRATANTE.
+
+5.2. As parcelas vencerão ${vencimentoTexto}. Após 10 dias de atraso, o serviço poderá ser suspenso mediante aviso, sem prorrogação automática do prazo contratual.
+
+6. PRAZO, RENOVAÇÃO E RESCISÃO
+
+6.1. O contrato vigorará por 12 meses a partir da assinatura e não será renovado automaticamente, salvo novo acordo escrito.
+
+6.2. O CONTRATANTE poderá rescindir o contrato. Na rescisão imotivada antes do término, serão devidos os valores vencidos, a parcela proporcional do período em curso e multa compensatória de 20% sobre o saldo remanescente, sujeita à redução quando exigida por lei. Não haverá devolução por períodos já cumpridos ou em que o serviço permaneceu disponível.
+
+6.3. Se o CONTRATADO rescindir sem justa causa, devolverá proporcionalmente o valor referente ao período futuro não prestado. Qualquer parte poderá rescindir por descumprimento relevante não sanado em 5 dias úteis após aviso. O CONTRATADO poderá rescindir imediatamente em caso de fraude, operação ilícita, ofensa grave, risco à segurança ou violação das regras de programas, sem prejuízo dos valores já vencidos.
+
+7. DADOS PESSOAIS E CONFIDENCIALIDADE
+
+7.1. As partes tratarão dados pessoais apenas para executar este contrato, cumprir obrigações legais, prevenir fraudes, exercer direitos e manter registros necessários. O CONTRATADO adotará medidas razoáveis de segurança e limitará o acesso às pessoas necessárias.
+
+7.2. Dados poderão ser compartilhados, no mínimo necessário, com plataformas de pagamento, assinatura, comunicação e fornecedores escolhidos pelo cliente. O titular poderá solicitar informações, correção e demais direitos legais pelo canal rondas4you@gmail.com.
+
+7.3. Encerrado o contrato, os dados serão eliminados ou anonimizados após 2 (dois) anos, salvo os necessários ao cumprimento de obrigação legal, prevenção de fraude ou exercício de direitos. Incidente de segurança relevante será comunicado conforme a legislação aplicável.
+
+7.4. As partes manterão confidenciais informações, estratégias, documentos e acessos recebidos durante o contrato e por 5 anos após seu término, exceto informação pública, recebida legitimamente de terceiro ou cuja divulgação seja exigida por lei.
+
+8. MATERIAIS, IMAGEM E DEPOIMENTOS
+
+8.1. Materiais, métodos, planilhas, relatórios e conteúdos do CONTRATADO permanecem de sua titularidade. O CONTRATANTE recebe licença pessoal e não transferível para uso próprio, sendo vedada reprodução comercial ou distribuição não autorizada.
+
+8.2. Nome, imagem, depoimento ou resultados do CONTRATANTE somente poderão ser divulgados mediante autorização separada, específica e revogável para usos futuros.
+
+9. DISPOSIÇÕES FINAIS
+
+9.1. A tolerância não implica renúncia. A invalidade de uma disposição não prejudica as demais. Este instrumento substitui entendimentos anteriores sobre o mesmo objeto; alterações exigem registro escrito.
+
+9.2. O contrato poderá ser assinado eletronicamente, inclusive por plataforma que permita identificar os signatários e preservar a integridade do documento. As partes reconhecem sua validade como original eletrônico.
+
+9.3. Fica eleito o foro de Belo Horizonte/MG, salvo competência legal obrigatória ou direito do consumidor de demandar no foro legalmente competente.
+
+Belo Horizonte/MG, ${dataHoje}.
+
+CONTRATANTE: ${nome} — CPF: ${cpf}
+CONTRATADO: Rondas for You LTDA — CNPJ: 22.314.784/0001-65`;
+};
 
 const TIPOS_PROGRAMA = ["Aéreo", "Cartão", "Hotel"];
 const MARCAS_POR_TIPO = {
@@ -28,7 +127,9 @@ const onlyDigits = (s) => (s || "").replace(/\D/g, "");
 const formatBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const formatNegativeBRL = (v) => `- ${formatBRL(Math.abs(Number(v) || 0))}`;
 const formatDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
+const formatDateTime = (iso) => { if (!iso) return "—"; const dt = new Date(iso); return `${dt.toLocaleDateString("pt-BR")} às ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; };
 const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
+const formatCpfFull = (cpf) => { const d = onlyDigits(cpf); if (d.length !== 11) return cpf || "________________"; return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`; };
 
 const PROGRAM_COLORS = {
   smiles: "#FF7A00", "latam pass": "#7B2D8E", latam: "#7B2D8E", tudoazul: "#0039A6", azul: "#0039A6",
@@ -140,31 +241,11 @@ const MODULES = [
       { key: "valorPago", label: "Valor pago", type: "currency" },
       { key: "valorMercado", label: "Valor de mercado", type: "currency" },
   ]},
-  { key: "comprasBonificadas", label: "Compras Bonificadas", icon: Gift, fields: [
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
-      { key: "pontos", label: "Pontos comprados", type: "number" },
-      { key: "bonusPct", label: "Bônus (%)", type: "number" },
-      { key: "valorPago", label: "Valor pago", type: "currency" },
-      { key: "data", label: "Data", type: "date" },
-  ]},
-  { key: "compraDePontos", label: "Compra de Pontos", icon: ShoppingCart, fields: [
-      { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
-      { key: "pontos", label: "Pontos", type: "number" },
-      { key: "valorPago", label: "Valor pago", type: "currency" },
-      { key: "data", label: "Data", type: "date" },
-  ]},
   { key: "creditosCartao", label: "Créditos de Cartão", icon: BadgePercent, fields: [
       { key: "cartao", label: "Cartão", type: "text" },
       { key: "pontosPorReal", label: "Pontos por R$", type: "number" },
       { key: "faturaMes", label: "Fatura do mês", type: "currency" },
       { key: "pontosAcumulados", label: "Pontos acumulados", type: "number" },
-  ]},
-  { key: "transferencias", label: "Transferências", icon: ArrowLeftRight, fields: [
-      { key: "origemId", label: "Origem", type: "relation", relationTo: "accounts", labelField: "programa" },
-      { key: "destinoId", label: "Destino", type: "relation", relationTo: "accounts", labelField: "programa" },
-      { key: "pontos", label: "Pontos transferidos", type: "number" },
-      { key: "bonusPct", label: "Bônus (%)", type: "number" },
-      { key: "data", label: "Data", type: "date" },
   ]},
   { key: "vendasDeMilhas", label: "Vendas de Milhas", icon: DollarSign, fields: [
       { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
@@ -195,6 +276,7 @@ const NAV = [
   { key: "creditosCartao", label: "Créditos de Cartão", icon: BadgePercent },
   { key: "transferencias", label: "Transferências", icon: ArrowLeftRight },
   { key: "vendasDeMilhas", label: "Vendas de Milhas", icon: DollarSign },
+  { key: "contrato", label: "Contrato", icon: PenTool },
 ];
 
 const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], cartoesCredito: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
@@ -276,6 +358,15 @@ const APP_CSS = `
   .mk-form-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .mk-preview { background: var(--card-2); border: 1px solid rgba(94,208,255,0.16); border-radius: 8px; padding: 12px 14px; margin-top: 6px; font-size: 13px; }
   .mk-preview .economia { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 16px; }
+  .mk-contrato-text { background: var(--card-2); border: 1px solid rgba(94,208,255,0.16); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; max-height: 340px; overflow-y: auto; }
+  .mk-contrato-sign label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+  .mk-signature-wrap { background: #fff; border-radius: 10px; border: 1px solid rgba(94,208,255,0.16); overflow: hidden; touch-action: none; width: 100%; }
+  .mk-signature-canvas { width: 100%; height: 200px; display: block; }
+  .mk-iconbtn-wide { border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; background: transparent; color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; cursor: pointer; padding: 9px 14px; }
+  .mk-iconbtn-wide:disabled { opacity: 0.5; cursor: default; }
+  .mk-contrato-assinado { background: var(--card-2); border: 1px solid rgba(52,196,149,0.35); border-radius: 10px; padding: 18px 20px; }
+  .mk-contrato-assinado-head { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 4px; }
+  .mk-contrato-assinatura-img { max-width: 320px; width: 100%; background: #fff; border-radius: 8px; padding: 8px; }
   .mk-alert-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(234,241,255,0.08); font-size: 13px; }
   .mk-alert-row:last-child { border-bottom: none; }
   .mk-signout-wrap { margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(234,241,255,0.14); }
@@ -448,11 +539,17 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showTripForm, setShowTripForm] = useState(false);
   const [showHotelForm, setShowHotelForm] = useState(false);
   const [showCreditCardForm, setShowCreditCardForm] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const [showCompraBonificadaForm, setShowCompraBonificadaForm] = useState(false);
+  const [showCompraDePontosForm, setShowCompraDePontosForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingEmission, setEditingEmission] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
   const [editingCreditCard, setEditingCreditCard] = useState(null);
+  const [editingTransfer, setEditingTransfer] = useState(null);
+  const [editingCompraBonificada, setEditingCompraBonificada] = useState(null);
+  const [editingCompraDePontos, setEditingCompraDePontos] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
 
@@ -462,7 +559,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("nome, email, plano_valor, plano_parcelas, plano_inicio, plano_fim").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("nome, email, cpf, telefone, plano_valor, plano_parcelas, plano_inicio, plano_fim, contrato_assinatura, contrato_assinado_em").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
@@ -576,7 +673,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     // Mantém a lógica anterior da Economia Total separada do novo card de Custo Total,
     // evitando descontar novamente o custo do saldo atual de pontos/milhas.
     const custoCompras = (db?.compraDePontos || []).reduce((s, c) => s + Number(c.valorPago || 0), 0)
-      + (db?.comprasBonificadas || []).reduce((s, c) => s + Number(c.valorPago || 0), 0);
+      + (db?.comprasBonificadas || []).reduce((s, c) => s + Number(c.valor || 0), 0);
     const custosParaEconomia = custoPlanoMensal + custoAssinaturas + custoCompras;
     const economiaTotal = economiaEmissoes + economiaReservas - custosParaEconomia;
 
@@ -626,6 +723,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
   const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
   const updateAccount = (id, data) => setAccounts((prev) => prev.map((a) => a.id === id ? { ...a, ...data, id } : a));
+  const [signingContract, setSigningContract] = useState(false);
+  const [signError, setSignError] = useState("");
+  const signContract = async (assinaturaBase64) => {
+    setSigningContract(true);
+    setSignError("");
+    const assinadoEm = new Date().toISOString();
+    const { error } = await supabase.from("profiles").update({
+      contrato_assinatura: assinaturaBase64,
+      contrato_assinado_em: assinadoEm,
+    }).eq("id", userId);
+    setSigningContract(false);
+    if (error) { setSignError("Não foi possível salvar a assinatura. Tente novamente."); return; }
+    setProfile((p) => ({ ...p, contrato_assinatura: assinaturaBase64, contrato_assinado_em: assinadoEm }));
+  };
   const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
 
   const addEmission = (data) => {
@@ -725,13 +836,121 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       return { ...prev, accounts: nextAccounts, creditosCartao: (prev.creditosCartao || []).filter((x) => x.id !== id) };
     });
   };
+
+  // ---- Transferências: debita da origem e credita no destino já com o bônus aplicado ----
+  const calcTransferCreditado = (data) => Math.round(Number(data.pontos || 0) * (1 + Number(data.bonusPct || 0) / 100));
+  const addTransfer = (data) => {
+    setDb((prev) => {
+      const creditado = calcTransferCreditado(data);
+      const nextAccounts = (prev.accounts || []).map((a) => {
+        if (a.id === data.origemId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontos || 0)) };
+        if (a.id === data.destinoId) return { ...a, saldo: Number(a.saldo || 0) + creditado };
+        return a;
+      });
+      return { ...prev, accounts: nextAccounts, transferencias: [...(prev.transferencias || []), { id: uid(), ...data, pontosCreditados: creditado }] };
+    });
+  };
+  const updateTransfer = (id, data) => {
+    setDb((prev) => {
+      const old = (prev.transferencias || []).find((t) => t.id === id);
+      let nextAccounts = [...(prev.accounts || [])];
+      if (old) {
+        nextAccounts = nextAccounts.map((a) => {
+          if (a.id === old.origemId) return { ...a, saldo: Number(a.saldo || 0) + Number(old.pontos || 0) };
+          if (a.id === old.destinoId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontosCreditados || 0)) };
+          return a;
+        });
+      }
+      const creditado = calcTransferCreditado(data);
+      nextAccounts = nextAccounts.map((a) => {
+        if (a.id === data.origemId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontos || 0)) };
+        if (a.id === data.destinoId) return { ...a, saldo: Number(a.saldo || 0) + creditado };
+        return a;
+      });
+      return { ...prev, accounts: nextAccounts, transferencias: (prev.transferencias || []).map((t) => t.id === id ? { ...t, ...data, id, pontosCreditados: creditado } : t) };
+    });
+  };
+  const removeTransfer = (id) => {
+    setDb((prev) => {
+      const t = (prev.transferencias || []).find((x) => x.id === id);
+      let nextAccounts = prev.accounts || [];
+      if (t) {
+        nextAccounts = nextAccounts.map((a) => {
+          if (a.id === t.origemId) return { ...a, saldo: Number(a.saldo || 0) + Number(t.pontos || 0) };
+          if (a.id === t.destinoId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(t.pontosCreditados || 0)) };
+          return a;
+        });
+      }
+      return { ...prev, accounts: nextAccounts, transferencias: (prev.transferencias || []).filter((x) => x.id !== id) };
+    });
+  };
+
+  // ---- Compras Bonificadas: só credita a conta quando o Status vira "Creditado" ----
+  const calcPontosCompraBonificada = (data) => Math.round(Number(data.valor || 0) * Number(data.multiplicador || 0));
+  const addCompraBonificada = (data) => {
+    setDb((prev) => {
+      const pontos = calcPontosCompraBonificada(data);
+      const shouldCredit = data.status === "Creditado";
+      const nextAccounts = shouldCredit ? (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + pontos } : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, comprasBonificadas: [...(prev.comprasBonificadas || []), { id: uid(), ...data, pontos, saldoCreditado: shouldCredit }] };
+    });
+  };
+  const updateCompraBonificada = (id, data) => {
+    setDb((prev) => {
+      const old = (prev.comprasBonificadas || []).find((c) => c.id === id);
+      let nextAccounts = [...(prev.accounts || [])];
+      if (old?.saldoCreditado) {
+        nextAccounts = nextAccounts.map((a) => a.id === old.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontos || 0)) } : a);
+      }
+      const pontos = calcPontosCompraBonificada(data);
+      const shouldCredit = data.status === "Creditado";
+      if (shouldCredit) {
+        nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + pontos } : a);
+      }
+      return { ...prev, accounts: nextAccounts, comprasBonificadas: (prev.comprasBonificadas || []).map((c) => c.id === id ? { ...c, ...data, id, pontos, saldoCreditado: shouldCredit } : c) };
+    });
+  };
+  const removeCompraBonificada = (id) => {
+    setDb((prev) => {
+      const c = (prev.comprasBonificadas || []).find((x) => x.id === id);
+      const nextAccounts = c?.saldoCreditado ? (prev.accounts || []).map((a) => a.id === c.programaId
+        ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(c.pontos || 0)) }
+        : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, comprasBonificadas: (prev.comprasBonificadas || []).filter((x) => x.id !== id) };
+    });
+  };
+
+  // ---- Compra de Pontos: crédito imediato e automático na conta ----
+  const addCompraDePontos = (data) => {
+    setDb((prev) => ({
+      ...prev,
+      accounts: (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontos || 0) } : a),
+      compraDePontos: [...(prev.compraDePontos || []), { id: uid(), ...data }],
+    }));
+  };
+  const updateCompraDePontos = (id, data) => {
+    setDb((prev) => {
+      const old = (prev.compraDePontos || []).find((c) => c.id === id);
+      let nextAccounts = [...(prev.accounts || [])];
+      if (old) nextAccounts = nextAccounts.map((a) => a.id === old.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontos || 0)) } : a);
+      nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontos || 0) } : a);
+      return { ...prev, accounts: nextAccounts, compraDePontos: (prev.compraDePontos || []).map((c) => c.id === id ? { ...c, ...data, id } : c) };
+    });
+  };
+  const removeCompraDePontos = (id) => {
+    setDb((prev) => {
+      const c = (prev.compraDePontos || []).find((x) => x.id === id);
+      const nextAccounts = c ? (prev.accounts || []).map((a) => a.id === c.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(c.pontos || 0)) } : a) : (prev.accounts || []);
+      return { ...prev, accounts: nextAccounts, compraDePontos: (prev.compraDePontos || []).filter((x) => x.id !== id) };
+    });
+  };
   const tripsSorted = [...proximasViagens].sort((a, b) => {
     if (a.semData && !b.semData) return 1;
     if (!a.semData && b.semData) return -1;
     return (a.dataIda || a.data || "9999-12-31").localeCompare(b.dataIda || b.data || "9999-12-31");
   });
 
-  const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao"].includes(m.key));
+  const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao", "comprasBonificadas", "compraDePontos", "transferencias"].includes(m.key));
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
 
   if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
@@ -748,7 +967,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             <button className="mk-sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
           </div>
           <div className="mk-navlist">
-            {NAV.map((n) => {
+            {NAV.filter((n) => !(n.key === "contrato" && impersonating)).map((n) => {
               const Icon = n.icon;
               return (
                 <button key={n.key} className={`mk-navitem ${tab === n.key ? "active" : ""}`} onClick={() => { setTab(n.key); setSidebarOpen(false); }}>
@@ -994,6 +1213,75 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             </>
           )}
 
+          {tab === "transferencias" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Transferências</h2>
+                <button className="mk-btn" onClick={() => { setEditingTransfer(null); setShowTransferForm(true); }} disabled={accounts.length === 0}><Plus size={15} /> Nova Transferência</button>
+              </div>
+              {(db.transferencias || []).length === 0 ? <div className="mk-empty">Nenhuma transferência registrada ainda.</div> : (
+                <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Origem</th><th>Destino</th><th>Pontos transferidos</th><th>Bônus (%)</th><th>Pontos creditados</th><th>Data</th><th></th></tr></thead><tbody>
+                  {(db.transferencias || []).map((t) => {
+                    const origem = accounts.find((a) => a.id === t.origemId), destino = accounts.find((a) => a.id === t.destinoId);
+                    return <tr key={t.id}>
+                      <td>{origem?.programa || "—"}</td><td>{destino?.programa || "—"}</td>
+                      <td>{Number(t.pontos || 0).toLocaleString("pt-BR")}</td><td>{Number(t.bonusPct || 0)}</td>
+                      <td><b style={{ color: "var(--green)" }}>{Number(t.pontosCreditados || 0).toLocaleString("pt-BR")}</b></td>
+                      <td>{formatDate(t.data)}</td>
+                      <td><button className="mk-iconbtn" onClick={() => { setEditingTransfer(t); setShowTransferForm(true); }} title="Editar"><Pencil size={14} /></button><button className="mk-iconbtn" onClick={() => removeTransfer(t.id)} title="Excluir"><Trash2 size={14} /></button></td>
+                    </tr>;
+                  })}
+                </tbody></table></div>
+              )}
+            </>
+          )}
+
+          {tab === "comprasBonificadas" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Compras Bonificadas</h2>
+                <button className="mk-btn" onClick={() => { setEditingCompraBonificada(null); setShowCompraBonificadaForm(true); }} disabled={accounts.length === 0}><Plus size={15} /> Nova Compra</button>
+              </div>
+              {(db.comprasBonificadas || []).length === 0 ? <div className="mk-empty">Nenhuma compra bonificada registrada ainda.</div> : (
+                <div className="mk-card-list">{(db.comprasBonificadas || []).map((c) => {
+                  const conta = accounts.find((a) => a.id === c.programaId);
+                  const statusColor = c.status === "Creditado" ? "var(--green)" : c.status === "Cancelado" ? "var(--red)" : "#E8B84B";
+                  return (
+                    <div className="mk-ticket" key={c.id}>
+                      <div className="mk-ticket-main">
+                        <div className="mk-ticket-row">
+                          <span className="mk-ticket-title"><Gift size={15} /> {c.loja || "Compra"}<span className="mk-badge">{conta?.programa || "conta removida"}</span></span>
+                          <span><button className="mk-iconbtn" onClick={() => { setEditingCompraBonificada(c); setShowCompraBonificadaForm(true); }} title="Editar"><Pencil size={15} /></button><button className="mk-iconbtn" onClick={() => removeCompraBonificada(c.id)} title="Excluir"><Trash2 size={15} /></button></span>
+                        </div>
+                        <div className="mk-field">Compra: <b>{formatDate(c.data)}</b> · Previsão de crédito: <b>{formatDate(c.dataPrevistaCredito)}</b></div>
+                        <div className="mk-field">Valor: <b>{formatBRL(c.valor)}</b> · Multiplicador: <b>{c.multiplicador}x</b></div>
+                      </div>
+                      <div className="mk-ticket-side">
+                        <div className="mk-field" style={{ textAlign: "right" }}>Pontos</div>
+                        <div className="mk-mono" style={{ fontSize: 18, fontWeight: 700 }}>{Number(c.pontos || 0).toLocaleString("pt-BR")}</div>
+                        <span className="mk-badge" style={{ background: statusColor, color: "#06122B" }}>{c.status}</span>
+                      </div>
+                    </div>
+                  );
+                })}</div>
+              )}
+            </>
+          )}
+
+          {tab === "compraDePontos" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Compra de Pontos</h2>
+                <button className="mk-btn" onClick={() => { setEditingCompraDePontos(null); setShowCompraDePontosForm(true); }} disabled={accounts.length === 0}><Plus size={15} /> Nova Compra</button>
+              </div>
+              {(db.compraDePontos || []).length === 0 ? <div className="mk-empty">Nenhuma compra de pontos registrada ainda.</div> : (
+                <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Programa</th><th>Pontos</th><th>Valor pago</th><th>Data</th><th></th></tr></thead><tbody>
+                  {(db.compraDePontos || []).map((c) => { const conta = accounts.find((a) => a.id === c.programaId); return <tr key={c.id}><td>{conta?.programa || "—"}</td><td>{Number(c.pontos || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(c.valorPago)}</td><td>{formatDate(c.data)}</td><td><button className="mk-iconbtn" onClick={() => { setEditingCompraDePontos(c); setShowCompraDePontosForm(true); }} title="Editar"><Pencil size={14} /></button><button className="mk-iconbtn" onClick={() => removeCompraDePontos(c.id)} title="Excluir"><Trash2 size={14} /></button></td></tr>; })}
+                </tbody></table></div>
+              )}
+            </>
+          )}
+
           {tab === "creditosCartao" && (
             <>
               <div className="mk-section-title">
@@ -1004,6 +1292,22 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Programa ou Co-Branded</th><th>Pontos por R$</th><th>Fatura do mês</th><th>Pontos acumulados</th><th></th></tr></thead><tbody>
                   {(db.creditosCartao || []).map((c) => { const conta = accounts.find((a) => a.id === c.programaId); return <tr key={c.id}><td>{conta?.programa || c.cartao || "—"}</td><td>{Number(c.pontosPorReal || 0).toLocaleString("pt-BR")}</td><td className="mk-negative">{formatNegativeBRL(c.faturaMes)}</td><td>{Number(c.pontosAcumulados || 0).toLocaleString("pt-BR")}</td><td><button className="mk-iconbtn" onClick={() => { setEditingCreditCard(c); setShowCreditCardForm(true); }} title="Editar"><Pencil size={14} /></button><button className="mk-iconbtn" onClick={() => removeCreditCard(c.id)} title="Excluir"><Trash2 size={14} /></button></td></tr>; })}
                 </tbody></table></div>
+              )}
+            </>
+          )}
+
+          {tab === "contrato" && !impersonating && (
+            <>
+              <div className="mk-section-title"><h2>Contrato</h2></div>
+              <div className="mk-contrato-text">{contratoTexto(profile, userEmail)}</div>
+              {profile?.contrato_assinatura ? (
+                <div className="mk-contrato-assinado">
+                  <div className="mk-contrato-assinado-head"><CheckCircle2 size={18} color="var(--green)" /> <b>Contrato assinado</b></div>
+                  <div className="mk-field" style={{ marginBottom: 10 }}>em {formatDateTime(profile.contrato_assinado_em)}</div>
+                  <img src={profile.contrato_assinatura} alt="Assinatura" className="mk-contrato-assinatura-img" />
+                </div>
+              ) : (
+                <SignaturePad onConfirm={signContract} saving={signingContract} error={signError} />
               )}
             </>
           )}
@@ -1019,6 +1323,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
       {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
       {showCreditCardForm && <CreditCardFormModal initial={editingCreditCard} accounts={accounts} onClose={() => { setShowCreditCardForm(false); setEditingCreditCard(null); }} onSave={(d) => { editingCreditCard ? updateCreditCard(editingCreditCard.id, d) : addCreditCard(d); setShowCreditCardForm(false); setEditingCreditCard(null); }} />}
+      {showTransferForm && <TransferFormModal initial={editingTransfer} accounts={accounts} onClose={() => { setShowTransferForm(false); setEditingTransfer(null); }} onSave={(d) => { editingTransfer ? updateTransfer(editingTransfer.id, d) : addTransfer(d); setShowTransferForm(false); setEditingTransfer(null); }} />}
+      {showCompraBonificadaForm && <CompraBonificadaFormModal initial={editingCompraBonificada} accounts={accounts} onClose={() => { setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} onSave={(d) => { editingCompraBonificada ? updateCompraBonificada(editingCompraBonificada.id, d) : addCompraBonificada(d); setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} />}
+      {showCompraDePontosForm && <CompraDePontosFormModal initial={editingCompraDePontos} accounts={accounts} onClose={() => { setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} onSave={(d) => { editingCompraDePontos ? updateCompraDePontos(editingCompraDePontos.id, d) : addCompraDePontos(d); setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} />}
       {showProfileForm && !impersonating && (
         <ProfileSettingsModal
           currentEmail={profile?.email || userEmail}
@@ -1028,6 +1335,48 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function SignaturePad({ onConfirm, saving, error }) {
+  const sigRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [isEmpty, setIsEmpty] = useState(true);
+  const [canvasWidth, setCanvasWidth] = useState(600);
+
+  useEffect(() => {
+    const measure = () => { if (wrapRef.current) setCanvasWidth(wrapRef.current.offsetWidth); };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const clear = () => { sigRef.current?.clear(); setIsEmpty(true); };
+  const confirmar = () => {
+    if (!sigRef.current || sigRef.current.isEmpty()) return;
+    const dataUrl = sigRef.current.getTrimmedCanvas().toDataURL("image/png");
+    onConfirm(dataUrl);
+  };
+
+  return (
+    <div className="mk-contrato-sign">
+      <label>Assine no campo abaixo (com o dedo no celular, ou com o mouse)</label>
+      <div className="mk-signature-wrap" ref={wrapRef}>
+        <SignatureCanvas
+          ref={sigRef}
+          penColor="#0F2049"
+          onEnd={() => setIsEmpty(sigRef.current ? sigRef.current.isEmpty() : true)}
+          canvasProps={{ width: canvasWidth, height: 200, className: "mk-signature-canvas" }}
+        />
+      </div>
+      {error && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{error}</div>}
+      <div className="mk-form-cols" style={{ marginTop: 10 }}>
+        <button className="mk-iconbtn-wide" onClick={clear} disabled={saving}>Limpar</button>
+        <button className="mk-btn" style={{ justifyContent: "center" }} onClick={confirmar} disabled={isEmpty || saving}>
+          {saving ? "Salvando..." : "Confirmar assinatura"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1225,6 +1574,109 @@ function CreditCardFormModal({ initial, accounts, onClose, onSave }) {
     <div className="mk-preview">{initial ? "Ao salvar, o crédito anterior será revertido e o novo valor será aplicado ao programa selecionado." : <>Ao salvar, <b>{Number(form.pontosAcumulados || 0).toLocaleString("pt-BR")}</b> pontos serão somados automaticamente ao saldo do programa selecionado.</>}</div>
     <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.pontosAcumulados} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar crédito"}</button>
   </div></div>;
+}
+
+function TransferFormModal({ initial, accounts, onClose, onSave }) {
+  const [form, setForm] = useState({
+    origemId: initial?.origemId || accounts[0]?.id || "",
+    destinoId: initial?.destinoId || accounts[0]?.id || "",
+    pontos: initial?.pontos ?? "",
+    bonusPct: initial?.bonusPct ?? "0",
+    data: initial?.data || "",
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const origem = accounts.find((a) => a.id === form.origemId);
+  const saldoDisponivel = Number(origem?.saldo || 0) + (initial && initial.origemId === form.origemId ? Number(initial.pontos || 0) : 0);
+  const saldoInsuficiente = origem && Number(form.pontos || 0) > saldoDisponivel;
+  const pontosCreditados = Math.round(Number(form.pontos || 0) * (1 + Number(form.bonusPct || 0) / 100));
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{initial ? "Editar Transferência" : "Nova Transferência"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Origem</label><select value={form.origemId} onChange={(e) => set("origemId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
+        <div className="mk-form-row"><label>Destino</label><select value={form.destinoId} onChange={(e) => set("destinoId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa}</option>)}</select></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Pontos transferidos</label><input type="number" value={form.pontos} onChange={(e) => set("pontos", e.target.value)} placeholder="19000" /></div>
+          <div className="mk-form-row"><label>Bônus (%)</label><input type="number" value={form.bonusPct} onChange={(e) => set("bonusPct", e.target.value)} placeholder="90" /></div>
+        </div>
+        <div className="mk-form-row"><label>Data</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+        {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente em {origem.programa} para transferir {Number(form.pontos || 0).toLocaleString("pt-BR")} pontos.</div>}
+        {form.pontos && <div className="mk-preview">Saem <b>{Number(form.pontos).toLocaleString("pt-BR")}</b> de {origem?.programa || "—"} e chegam <b>{pontosCreditados.toLocaleString("pt-BR")}</b> em {accounts.find((a) => a.id === form.destinoId)?.programa || "—"}.</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.origemId || !form.destinoId || !form.pontos || !form.data || saldoInsuficiente} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar transferência"}</button>
+      </div>
+    </div>
+  );
+}
+
+function CompraBonificadaFormModal({ initial, accounts, onClose, onSave }) {
+  const [form, setForm] = useState({
+    programaId: initial?.programaId || accounts[0]?.id || "",
+    data: initial?.data || new Date().toISOString().slice(0, 10),
+    dataPrevistaCredito: initial?.dataPrevistaCredito || "",
+    loja: initial?.loja || "",
+    valor: initial?.valor ?? "",
+    multiplicador: initial?.multiplicador ?? "1",
+    status: initial?.status || "Pendente",
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const pontosCalculados = Math.round(Number(form.valor || 0) * Number(form.multiplicador || 0));
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{initial ? "Editar Compra Bonificada" : "Adicionar Compra Bonificada"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <p className="mk-field" style={{ marginTop: -6, marginBottom: 12 }}>Registre os detalhes da sua compra para rastrear os pontos</p>
+        <div className="mk-form-row"><label>Conta</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa}</option>)}</select></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Data da Compra</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+          <div className="mk-form-row"><label>Data Prevista Crédito</label><input type="date" value={form.dataPrevistaCredito} onChange={(e) => set("dataPrevistaCredito", e.target.value)} /></div>
+        </div>
+        <div className="mk-form-row"><label>Loja</label><input value={form.loja} onChange={(e) => set("loja", e.target.value)} placeholder="Ex: Ponto Frio" /></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Valor (R$)</label><input type="number" step="0.01" value={form.valor} onChange={(e) => set("valor", e.target.value)} placeholder="0" /></div>
+          <div className="mk-form-row"><label>Multiplicador</label><input type="number" step="0.01" value={form.multiplicador} onChange={(e) => set("multiplicador", e.target.value)} placeholder="1" /></div>
+        </div>
+        <div className="mk-form-row"><label>Status</label>
+          <select value={form.status} onChange={(e) => set("status", e.target.value)}>
+            <option value="Pendente">Pendente</option>
+            <option value="Creditado">Creditado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+        </div>
+        {form.valor && form.multiplicador && (
+          <div className="mk-preview">
+            Pontos previstos: <b>{pontosCalculados.toLocaleString("pt-BR")}</b>
+            {form.status === "Creditado" ? <> — serão creditados em {accounts.find((a) => a.id === form.programaId)?.programa || "—"} ao salvar.</> : <span className="mk-field"> (só entram no saldo quando o status virar "Creditado")</span>}
+          </div>
+        )}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.valor} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar compra"}</button>
+      </div>
+    </div>
+  );
+}
+
+function CompraDePontosFormModal({ initial, accounts, onClose, onSave }) {
+  const [form, setForm] = useState({
+    programaId: initial?.programaId || accounts[0]?.id || "",
+    pontos: initial?.pontos ?? "",
+    valorPago: initial?.valorPago ?? "",
+    data: initial?.data || new Date().toISOString().slice(0, 10),
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>{initial ? "Editar Compra de Pontos" : "Nova Compra de Pontos"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Programa</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Pontos</label><input type="number" value={form.pontos} onChange={(e) => set("pontos", e.target.value)} placeholder="100000" /></div>
+          <div className="mk-form-row"><label>Valor pago (R$)</label><input type="number" step="0.01" value={form.valorPago} onChange={(e) => set("valorPago", e.target.value)} /></div>
+        </div>
+        <div className="mk-form-row"><label>Data</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+        {form.pontos && <div className="mk-preview">Ao salvar, <b>{Number(form.pontos).toLocaleString("pt-BR")}</b> pontos são somados automaticamente ao saldo de {accounts.find((a) => a.id === form.programaId)?.programa || "—"}.</div>}
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.pontos} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar compra"}</button>
+      </div>
+    </div>
+  );
 }
 
 // ---------- Dashboard agregada do admin ----------
