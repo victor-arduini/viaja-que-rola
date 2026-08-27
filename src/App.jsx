@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import SignatureCanvas from "react-signature-canvas";
+import { jsPDF } from "jspdf";
 import {
   Plane, Wallet, WalletCards, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
@@ -24,7 +25,7 @@ const contratoTexto = (profile, userEmail) => {
 
 PARTES
 
-CONTRATANTE: ${nome}, CPF nº ${cpf}, RG nº ________________, e-mail ${userEmail || "________________"} e telefone/WhatsApp ${telefone}.
+CONTRATANTE: ${nome}, CPF nº ${cpf}, e-mail ${userEmail || "________________"} e telefone/WhatsApp ${telefone}.
 
 CONTRATADO: Rondas for You LTDA, CNPJ nº 22.314.784/0001-65, com sede na Rua Manaus, 601 - São Lucas, Belo Horizonte/MG, e-mail rondas4you@gmail.com, neste ato representado por Victor Arduini.
 
@@ -128,6 +129,49 @@ const formatBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "curr
 const formatNegativeBRL = (v) => `- ${formatBRL(Math.abs(Number(v) || 0))}`;
 const formatDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const formatDateTime = (iso) => { if (!iso) return "—"; const dt = new Date(iso); return `${dt.toLocaleDateString("pt-BR")} às ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; };
+
+function baixarContratoPDF(texto, assinaturaBase64, assinadoEmIso, nome) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const marginX = 42;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - marginX * 2;
+  let y = 54;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  const linhasTitulo = doc.splitTextToSize("CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE CONSULTORIA E GESTÃO ESTRATÉGICA DE MILHAS E PROGRAMAS DE FIDELIDADE", maxWidth);
+  linhasTitulo.forEach((l) => { doc.text(l, marginX, y); y += 16; });
+  y += 8;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.5);
+  const corpo = texto.split("\n").slice(1).join("\n").trim(); // remove o título repetido do corpo
+  corpo.split("\n").forEach((paragrafo) => {
+    if (paragrafo.trim() === "") { y += 8; return; }
+    const linhas = doc.splitTextToSize(paragrafo, maxWidth);
+    linhas.forEach((linha) => {
+      if (y > pageHeight - 60) { doc.addPage(); y = 54; }
+      doc.text(linha, marginX, y);
+      y += 12.5;
+    });
+  });
+
+  if (y > pageHeight - 160) { doc.addPage(); y = 54; }
+  y += 20;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("Assinatura digital do CONTRATANTE", marginX, y);
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`Assinado por ${nome || "—"} em ${formatDateTime(assinadoEmIso)}`, marginX, y + 10);
+  try {
+    doc.addImage(assinaturaBase64, "PNG", marginX, y + 18, 200, 70);
+  } catch (e) { /* se a imagem falhar, o PDF ainda é gerado sem ela */ }
+
+  doc.save(`contrato-viaja-que-rola-${(nome || "cliente").replace(/\s+/g, "-").toLowerCase()}.pdf`);
+}
 const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
 const formatCpfFull = (cpf) => { const d = onlyDigits(cpf); if (d.length !== 11) return cpf || "________________"; return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`; };
 
@@ -552,6 +596,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [editingCompraDePontos, setEditingCompraDePontos] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
+  const [showContratoLembrete, setShowContratoLembrete] = useState(false);
+
+  useEffect(() => {
+    if (!profile || impersonating || profile.contrato_assinatura) return;
+    const cadastro = profile.created_at ? new Date(profile.created_at) : null;
+    if (!cadastro) return;
+    const diasDesdeCadastro = Math.floor((Date.now() - cadastro.getTime()) / 86400000);
+    if (diasDesdeCadastro < 1) return;
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const chave = `contratoLembrete_${userId}_${hojeStr}`;
+    if (localStorage.getItem(chave)) return;
+    localStorage.setItem(chave, "1");
+    setShowContratoLembrete(true);
+  }, [profile, impersonating, userId]);
 
   useEffect(() => {
     (async () => {
@@ -559,7 +617,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (error) console.error(error);
       setDb(data ? { ...EMPTY_DB, ...data.data } : EMPTY_DB);
     })();
-    supabase.from("profiles").select("nome, email, cpf, telefone, plano_valor, plano_parcelas, plano_inicio, plano_fim, contrato_assinatura, contrato_assinado_em").eq("id", userId).maybeSingle().then(({ data }) => {
+    supabase.from("profiles").select("nome, email, cpf, telefone, plano_valor, plano_parcelas, plano_inicio, plano_fim, contrato_assinatura, contrato_assinado_em, created_at").eq("id", userId).maybeSingle().then(({ data }) => {
       setProfile(data || {});
     });
   }, [userId]);
@@ -736,6 +794,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     setSigningContract(false);
     if (error) { setSignError("Não foi possível salvar a assinatura. Tente novamente."); return; }
     setProfile((p) => ({ ...p, contrato_assinatura: assinaturaBase64, contrato_assinado_em: assinadoEm }));
+    try {
+      baixarContratoPDF(contratoTexto(profile, userEmail), assinaturaBase64, assinadoEm, profile?.nome || userEmail);
+    } catch (e) { console.error("Falha ao gerar PDF do contrato:", e); }
   };
   const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
 
@@ -1305,6 +1366,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                   <div className="mk-contrato-assinado-head"><CheckCircle2 size={18} color="var(--green)" /> <b>Contrato assinado</b></div>
                   <div className="mk-field" style={{ marginBottom: 10 }}>em {formatDateTime(profile.contrato_assinado_em)}</div>
                   <img src={profile.contrato_assinatura} alt="Assinatura" className="mk-contrato-assinatura-img" />
+                  <div style={{ marginTop: 14 }}>
+                    <button className="mk-btn" onClick={() => baixarContratoPDF(contratoTexto(profile, userEmail), profile.contrato_assinatura, profile.contrato_assinado_em, profile?.nome || userEmail)}>Baixar PDF do contrato</button>
+                  </div>
                 </div>
               ) : (
                 <SignaturePad onConfirm={signContract} saving={signingContract} error={signError} />
@@ -1326,6 +1390,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       {showTransferForm && <TransferFormModal initial={editingTransfer} accounts={accounts} onClose={() => { setShowTransferForm(false); setEditingTransfer(null); }} onSave={(d) => { editingTransfer ? updateTransfer(editingTransfer.id, d) : addTransfer(d); setShowTransferForm(false); setEditingTransfer(null); }} />}
       {showCompraBonificadaForm && <CompraBonificadaFormModal initial={editingCompraBonificada} accounts={accounts} onClose={() => { setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} onSave={(d) => { editingCompraBonificada ? updateCompraBonificada(editingCompraBonificada.id, d) : addCompraBonificada(d); setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} />}
       {showCompraDePontosForm && <CompraDePontosFormModal initial={editingCompraDePontos} accounts={accounts} onClose={() => { setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} onSave={(d) => { editingCompraDePontos ? updateCompraDePontos(editingCompraDePontos.id, d) : addCompraDePontos(d); setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} />}
+      {showContratoLembrete && (
+        <div className="mk-modal-backdrop" onClick={() => setShowContratoLembrete(false)}>
+          <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Contrato pendente <button className="mk-iconbtn" onClick={() => setShowContratoLembrete(false)}><X size={18} /></button></h3>
+            <p className="mk-field" style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.6 }}>
+              Notamos que você ainda não assinou o contrato de prestação de serviços. Assine digitalmente na aba "Contrato" para regularizar seu cadastro.
+            </p>
+            <div className="mk-form-cols" style={{ marginTop: 14 }}>
+              <button className="mk-iconbtn-wide" onClick={() => setShowContratoLembrete(false)}>Lembrar depois</button>
+              <button className="mk-btn" style={{ justifyContent: "center" }} onClick={() => { setTab("contrato"); setShowContratoLembrete(false); }}>Assinar agora</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showProfileForm && !impersonating && (
         <ProfileSettingsModal
           currentEmail={profile?.email || userEmail}
@@ -1766,6 +1844,7 @@ function AdminAggregateDashboard({ clients }) {
 
   const vencendoPlanos = clients.filter((c) => c.plano_fim).map((c) => ({ ...c, dias: Math.ceil((new Date(`${c.plano_fim}T00:00:00`) - new Date()) / 86400000) })).filter((c) => c.dias <= 30).sort((a, b) => a.dias - b.dias);
   const valorRecebidoPlanos = clients.reduce((sum, c) => sum + Number(c.plano_valor || 0), 0);
+  const contratosPendentes = clients.filter((c) => !c.contrato_assinatura);
 
   return (
     <>
@@ -1776,6 +1855,7 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-stub"><div className="mk-stub-label"><DollarSign size={13} /> Valor recebido dos planos</div><div className="mk-stub-value" style={{ color: "var(--green)" }}>{formatBRL(valorRecebidoPlanos)}</div><div className="mk-stub-foot">Soma do valor dos planos cadastrados</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendoPlanos.length || "—"}</div><div className="mk-stub-foot">{vencendoPlanos.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Vencimentos próximos</div><div className="mk-stub-value">{agg.vencimentos.length || "—"}</div><div className="mk-stub-foot">Assinaturas, milhas e pontos em até 6 meses</div></div>
+        <div className="mk-stub"><div className="mk-stub-label"><PenTool size={13} /> Contratos pendentes</div><div className="mk-stub-value" style={{ color: contratosPendentes.length ? "#FFB020" : "var(--green)" }}>{contratosPendentes.length || "—"}</div><div className="mk-stub-foot">{contratosPendentes.length ? "clientes ainda não assinaram" : "todos assinaram"}</div></div>
       </div>
 
       <div className="mk-section-title"><h2>Vencimentos próximos — 6 meses</h2></div>
@@ -2067,7 +2147,7 @@ function ClientesManager({ clients, onChanged, onView }) {
       ) : (
         <div className="mk-table-wrap">
           <table className="mk-table">
-            <thead><tr><th>Nome</th><th>E-mail</th><th>CPF</th><th>Plano</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Nome</th><th>E-mail</th><th>CPF</th><th>Plano</th><th>Status</th><th>Contrato</th><th></th></tr></thead>
             <tbody>
               {clients.map((c) => {
                 const st = planoStatus(c);
@@ -2078,6 +2158,10 @@ function ClientesManager({ clients, onChanged, onView }) {
                     <td>{maskCpf(c.cpf)}</td>
                     <td>{c.plano_valor ? formatBRL(c.plano_valor) : "—"}{c.plano_parcelas ? ` em ${c.plano_parcelas}x` : ""}{c.plano_fim ? ` · até ${formatDate(c.plano_fim)}` : ""}</td>
                     <td>{st ? <span className="mk-badge" style={{ background: st.color, color: "#06122B" }}>{st.label}</span> : "—"}</td>
+                    <td>{c.contrato_assinatura
+                      ? <span className="mk-badge" style={{ background: "var(--green)", color: "#06122B" }} title={`Assinado em ${formatDateTime(c.contrato_assinado_em)}`}>Assinado</span>
+                      : <span className="mk-badge" style={{ background: "#FFB020", color: "#06122B" }}>Pendente</span>}
+                    </td>
                     <td>
                       <button className="mk-iconbtn" onClick={() => onView(c)} title="Ver painel"><Eye size={14} /></button>
                       <button className="mk-iconbtn" onClick={() => { setEditing(c); setShowForm(true); }} title="Editar"><Pencil size={14} /></button>
