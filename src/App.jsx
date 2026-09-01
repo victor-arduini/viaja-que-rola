@@ -109,7 +109,7 @@ CONTRATADO: Rondas for You LTDA — CNPJ: 22.314.784/0001-65`;
 
 const TIPOS_PROGRAMA = ["Aéreo", "Cartão", "Hotel"];
 const MARCAS_POR_TIPO = {
-  "Aéreo": ["Azul", "Latam", "Ibéria", "Smiles", "Tap", "Outro"],
+  "Aéreo": ["Azul", "Latam", "Ibéria", "Smiles", "Tap", "United", "American Airlines", "Outro"],
   "Cartão": ["Átomos", "Caixa", "Coopera", "Curtaí", "Esfera", "Itaú", "Livelo", "Loop", "Outro"],
   "Hotel": ["All Accor", "Outro"],
 };
@@ -203,6 +203,7 @@ const PROGRAM_COLORS = {
   livelo: "#E4007C", esfera: "#6B7280", accor: "#151515", iberia: "#C6007E", ibéria: "#C6007E",
   tap: "#CE0E2D", átomos: "#7A3FF2", atomos: "#7A3FF2", caixa: "#0055A4", coopera: "#00A651",
   curtaí: "#FF5A00", curtai: "#FF5A00", itaú: "#EC7000", itau: "#EC7000",
+  united: "#005DAA", "american airlines": "#A6192E", american: "#A6192E",
 };
 function colorForPrograma(nome) {
   const key = (nome || "").toLowerCase();
@@ -226,6 +227,8 @@ const VALOR_MILHEIRO_PATRIMONIO = {
   coopera: 40,
   curtai: 40,
   itau: 40,
+  united: 100,
+  "american airlines": 85,
 };
 
 function normalizePrograma(nome) {
