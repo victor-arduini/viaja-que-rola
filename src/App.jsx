@@ -130,6 +130,29 @@ const formatNegativeBRL = (v) => `- ${formatBRL(Math.abs(Number(v) || 0))}`;
 const formatDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const formatDateTime = (iso) => { if (!iso) return "—"; const dt = new Date(iso); return `${dt.toLocaleDateString("pt-BR")} às ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; };
 
+// Conta quantas parcelas mensais já "venceram" entre uma data de início e uma data limite,
+// contando o próprio mês de início como a 1ª parcela. Ex.: início 31/08, limite 31/12 -> 5 parcelas
+// (ago, set, out, nov, dez). Se o dia do mês do limite ainda não chegou ao dia do início, essa
+// parcela do mês ainda não conta.
+function contarParcelasAte(dataInicioStr, dataLimiteStr) {
+  if (!dataInicioStr || !dataLimiteStr) return 0;
+  const inicio = new Date(`${dataInicioStr}T00:00:00`);
+  const limite = new Date(`${dataLimiteStr}T00:00:00`);
+  if (limite < inicio) return 0;
+  let meses = (limite.getFullYear() - inicio.getFullYear()) * 12 + (limite.getMonth() - inicio.getMonth()) + 1;
+  if (limite.getDate() < inicio.getDate()) meses -= 1;
+  return Math.max(0, meses);
+}
+// Retorna { parcelasVencidas, custoVencido } de um item recorrente (plano ou assinatura),
+// já limitando pelo número total de parcelas (se houver) e pela data de hoje ou de fim, o que vier antes.
+function parcelasVencidasInfo(dataInicioStr, dataFimStr, totalParcelas, valorParcela) {
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  const limiteStr = dataFimStr && dataFimStr < hojeStr ? dataFimStr : hojeStr;
+  let vencidas = contarParcelasAte(dataInicioStr, limiteStr);
+  if (totalParcelas) vencidas = Math.min(vencidas, totalParcelas);
+  return { parcelasVencidas: vencidas, custoVencido: vencidas * Number(valorParcela || 0) };
+}
+
 function baixarContratoPDF(texto, assinaturaBase64, assinadoEmIso, nome) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const marginX = 42;
@@ -720,20 +743,34 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     const economiaReservas = reservasCalc.reduce((s, r) => s + r.economia, 0);
     const vencendo = accounts.filter((a) => a.validade).map((a) => ({ ...a, dias: Math.ceil((new Date(a.validade) - new Date()) / 86400000) })).filter((a) => a.dias <= 60).sort((a, b) => a.dias - b.dias);
 
-    const custoMilhasEPontos = accounts.reduce((s, a) => s + (Number(a.saldo || 0) / 1000) * Number(a.cpm || 0), 0);
-    const custoAssinaturas = (db?.assinaturas || []).reduce((s, a) => s + Number(a.valorMensal || 0), 0);
-    const custoTaxasEmbarque = emissions.reduce((s, e) => s + Number(e.taxas || 0), 0);
+    // Plano: só conta as parcelas que já venceram (mês de início até hoje ou até o fim do plano, o que vier antes).
+    // Sem data de início cadastrada, mantém o comportamento anterior (valor cheio da parcela).
     const planoValor = Number(profile?.plano_valor || 0);
     const planoParcelas = Number(profile?.plano_parcelas || 0);
-    const custoPlanoMensal = planoParcelas > 0 ? planoValor / planoParcelas : planoValor;
-    const custoTotal = custoMilhasEPontos + custoAssinaturas + custoTaxasEmbarque + custoPlanoMensal;
+    const parcelaPlanoValor = planoParcelas > 0 ? planoValor / planoParcelas : planoValor;
+    const planoInfo = profile?.plano_inicio
+      ? parcelasVencidasInfo(profile.plano_inicio, profile.plano_fim, planoParcelas || 1, parcelaPlanoValor)
+      : { parcelasVencidas: null, custoVencido: parcelaPlanoValor };
+    const custoPlano = planoInfo.custoVencido;
 
-    // Mantém a lógica anterior da Economia Total separada do novo card de Custo Total,
-    // evitando descontar novamente o custo do saldo atual de pontos/milhas.
+    // Assinaturas: cada uma conta suas próprias parcelas vencidas, do início até o vencimento dela.
+    // Sem data de início cadastrada, mantém o comportamento anterior (valor mensal cheio).
+    const assinaturasCalc = (db?.assinaturas || []).map((a) => {
+      if (!a.inicio) return { ...a, parcelasVencidas: null, custoVencido: Number(a.valorMensal || 0) };
+      const totalParc = contarParcelasAte(a.inicio, a.vencimento) || null; // null = sem limite conhecido
+      const info = parcelasVencidasInfo(a.inicio, a.vencimento, totalParc, a.valorMensal);
+      return { ...a, ...info };
+    });
+    const custoAssinaturas = assinaturasCalc.reduce((s, a) => s + a.custoVencido, 0);
+
+    const custoTaxasEmbarque = emissions.reduce((s, e) => s + Number(e.taxas || 0), 0);
     const custoCompras = (db?.compraDePontos || []).reduce((s, c) => s + Number(c.valorPago || 0), 0)
       + (db?.comprasBonificadas || []).reduce((s, c) => s + Number(c.valor || 0), 0);
-    const custosParaEconomia = custoPlanoMensal + custoAssinaturas + custoCompras;
-    const economiaTotal = economiaEmissoes + economiaReservas - custosParaEconomia;
+
+    // Custo Total único, usado igualmente pelo card de Custo Total e pelo cálculo de Economia Total —
+    // assim nunca há divergência ou dupla contagem entre os dois.
+    const custoTotal = custoPlano + custoAssinaturas + custoTaxasEmbarque + custoCompras;
+    const economiaTotal = economiaEmissoes + economiaReservas - custoTotal;
 
     return {
       totalPontos,
@@ -742,12 +779,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       economiaEmissoes,
       economiaReservas,
       vencendo,
-      custoMilhasEPontos,
+      custoPlano,
       custoAssinaturas,
       custoTaxasEmbarque,
-      custoPlanoMensal,
+      custoCompras,
       custoTotal,
       economiaTotal,
+      parcelasPlanoVencidas: planoInfo.parcelasVencidas,
     };
   }, [accounts, emissions, emissionsCalc, reservasCalc, profile, db]);
 
@@ -1088,7 +1126,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-stub">
                   <div className="mk-stub-label"><Wallet size={13} /> Custo Total</div>
                   <div className="mk-stub-value mk-negative">{formatNegativeBRL(totals.custoTotal)}</div>
-                  <div className="mk-stub-foot">Milhas/pontos + clubes + taxas + mensalidade do plano</div>
+                  <div className="mk-stub-foot">Parcelas já vencidas do plano/assinaturas + taxas + compras</div>
                 </div>
                 <div className="mk-stub">
                   <div className="mk-stub-label"><TrendingUp size={13} /> Economia Total</div>
