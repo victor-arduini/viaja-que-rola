@@ -369,8 +369,8 @@ const APP_CSS = `
   .mk-app { display: flex; align-items: stretch; min-height: 100vh; }
   .mk-sidebar { width: 224px; flex-shrink: 0; background: rgba(3,7,16,0.55); border-right: 1px solid rgba(94,208,255,0.1); padding: 20px 12px; display: flex; flex-direction: column; }
   .mk-sidebar-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; padding: 0 6px; }
-  .mk-logo-badge { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); transform: rotate(-6deg); flex-shrink: 0; }
-  .mk-logo-badge svg { transform: rotate(6deg); color: #fff; }
+  .mk-logo-badge { width: 36px; height: 36px; border-radius: 11px; overflow: hidden; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); flex-shrink: 0; }
+  .mk-logo-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .mk-sidebar-brand .name { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 15px; line-height: 1.1; background: linear-gradient(90deg, var(--ink), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .mk-sidebar-brand .sub { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent-2); font-weight: 600; }
   .mk-navlist { display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 140px); overflow-y: auto; flex: 1; }
@@ -1064,7 +1064,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         {sidebarOpen && <div className="mk-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div className={`mk-sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="mk-sidebar-brand">
-            <div className="mk-logo-badge"><Plane size={17} strokeWidth={2.2} /></div>
+            <div className="mk-logo-badge"><img src="/logo-vr-icon.png" alt="Viaja que rola" /></div>
             <div><div className="sub">Arduini</div><div className="name">Viaja que rola</div></div>
             <button className="mk-sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
           </div>
@@ -2260,7 +2260,7 @@ function AdminShell({ adminEmail, onSignOut }) {
         {sidebarOpen && <div className="mk-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div className={`mk-sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="mk-sidebar-brand">
-            <div className="mk-logo-badge"><Plane size={17} strokeWidth={2.2} /></div>
+            <div className="mk-logo-badge"><img src="/logo-vr-icon.png" alt="Viaja que rola" /></div>
             <div><div className="sub">Arduini</div><div className="name">Viaja que rola</div></div>
             <button className="mk-sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
           </div>
@@ -2345,6 +2345,10 @@ function LoginScreen() {
         .mk-login-card input { width: 100%; border: 1px solid rgba(234,241,255,0.18); border-radius: 8px; padding: 10px 12px; font-size: 14px; background: rgba(234,241,255,0.08); color: var(--ink); margin-bottom: 12px; font-family: 'Space Grotesk', sans-serif; }
         .mk-login-card button[type=submit] { width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; border: none; padding: 11px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
         .mk-login-card .msg { margin-top: 12px; font-size: 12.5px; color: var(--accent-2); }
+        .mk-login-card .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+        .mk-login-card .brand img { width: 42px; height: 42px; border-radius: 12px; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); flex-shrink: 0; }
+        .mk-login-card .brand .sub { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent-2); }
+        .mk-login-card .brand h1 { margin: 0; }
         @media (max-width: 640px) {
           .mk-login-bgimg { background-position: center 12%; }
           .mk-login-card { padding: 26px 22px; }
@@ -2353,8 +2357,13 @@ function LoginScreen() {
       <div className="mk-login-bgimg" />
       <div className="mk-login-overlay" />
       <div className="mk-login-card">
-        <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--accent-2)" }}>Arduini</div>
-        <h1>Viaja que rola</h1>
+        <div className="brand">
+          <img src="/logo-vr-icon.png" alt="Viaja que rola" />
+          <div>
+            <div className="sub">Arduini</div>
+            <h1>Viaja que rola</h1>
+          </div>
+        </div>
         <p>Entre com seu e-mail ou CPF cadastrado pelo administrador.</p>
         <form onSubmit={submit}>
           <input type="text" placeholder="E-mail ou CPF" value={login} onChange={(e) => setLogin(e.target.value)} required />
