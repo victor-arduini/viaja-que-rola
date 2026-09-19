@@ -360,7 +360,7 @@ const APP_CSS = `
     --ink: #EAF1FF; --muted: #8CA2C9;
     color-scheme: dark;
     font-family: 'Space Grotesk', sans-serif;
-    background: radial-gradient(circle at 15% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
+    background: radial-gradient(circle at 15Page_Down% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
     color: var(--ink); min-height: 100vh; box-sizing: border-box; overflow: hidden;
   }
   .mk-root * { box-sizing: border-box; }
@@ -465,13 +465,13 @@ const APP_CSS = `
     .mk-sidebar {
       position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; width: 250px;
       transform: translateX(-100%); transition: transform .25s ease;
-      box-shadow: 20px 0 60px rgba(0,0,0,0.5); border-radius: 0; overflow-y: auto;
+      box-shadow: 20px 0 60px rgba(0,0,0,0.5); border-radius: 0; overflow-y: auto; padding-top: calc(28px + env(safe-area-inset-top, 24px));
     }
     .mk-sidebar.open { transform: translateX(0); }
     .mk-sidebar-overlay { display: block; position: fixed; inset: 0; background: rgba(5,9,18,0.6); z-index: 55; }
     .mk-menu-toggle { display: inline-flex; }
     .mk-sidebar-close { display: inline-flex; }
-    .mk-main { padding: 16px 16px 40px; width: 100%; }
+    .mk-main { padding: calc(28px + env(safe-area-inset-top, 24px)) 16px 40px; width: 100%; }
     .mk-topbar h2 { font-size: 18px; }
     .mk-form-cols { grid-template-columns: 1fr; }
     .mk-ticket { grid-template-columns: 1fr; }
