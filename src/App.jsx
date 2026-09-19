@@ -2350,7 +2350,7 @@ function LoginScreen() {
         .mk-login-card .brand .sub { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent-2); }
         .mk-login-card .brand h1 { margin: 0; }
         @media (max-width: 640px) {
-          .mk-login-bgimg { background-position: center 12%; }
+          .mk-login-bgimg { background-position: left center; }
           .mk-login-card { padding: 26px 22px; }
         }
       `}</style>
