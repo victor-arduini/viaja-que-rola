@@ -1541,7 +1541,7 @@ function SignaturePad({ onConfirm, saving, error }) {
   );
 }
 
-function AccountFormModal({ initial, onClose, onSave }) {
+function AccountFormModal({ initial, dependentes, onClose, onSave }) {
   const initialTipo = initial ? inferTipo(initial) : "Aéreo";
   const initialIsCustom = initial && !MARCAS_POR_TIPO[initialTipo].includes(initial.programa);
   const [form, setForm] = useState({
@@ -1549,6 +1549,7 @@ function AccountFormModal({ initial, onClose, onSave }) {
     marca: initialIsCustom ? "Outro" : (initial?.programa || MARCAS_POR_TIPO[initialTipo][0]),
     outroTexto: initialIsCustom ? (initial?.programa || "") : "",
     titular: initial?.titular || "",
+    titularId: initial?.titularId || "",
     saldo: initial?.saldo ?? "",
     cpm: initial?.cpm ?? "",
     validade: initial?.validade || "",
@@ -1571,12 +1572,18 @@ function AccountFormModal({ initial, onClose, onSave }) {
           <div className="mk-form-row"><label>Qual programa?</label><input value={form.outroTexto} onChange={(e) => set("outroTexto", e.target.value)} placeholder="Digite o nome do programa" /></div>
         )}
         <div className="mk-form-row"><label>Titular</label><input value={form.titular} onChange={(e) => set("titular", e.target.value)} placeholder="Nome do titular" /></div>
+        <div className="mk-form-row"><label>Pertence a</label>
+          <select value={form.titularId} onChange={(e) => set("titularId", e.target.value)}>
+            <option value="">Titular da conta</option>
+            {(dependentes || []).map((dep) => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
+          </select>
+        </div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
         <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo || (isOutro && !form.outroTexto.trim())} onClick={() => onSave({ tipo: form.tipo, programa: programaFinal, titular: form.titular, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>{initial ? "Salvar alterações" : "Salvar programa"}</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo || (isOutro && !form.outroTexto.trim())} onClick={() => onSave({ tipo: form.tipo, programa: programaFinal, titular: form.titular, titularId: form.titularId, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>{initial ? "Salvar alterações" : "Salvar programa"}</button>
       </div>
     </div>
   );
