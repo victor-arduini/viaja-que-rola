@@ -641,6 +641,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [profile, setProfile] = useState(null);
   const [showCpf, setShowCpf] = useState({});
   const [showAccountForm, setShowAccountForm] = useState(false);
+  const [showDependenteForm, setShowDependenteForm] = useState(false);
   const [showEmissionForm, setShowEmissionForm] = useState(false);
   const [showTripForm, setShowTripForm] = useState(false);
   const [showHotelForm, setShowHotelForm] = useState(false);
@@ -649,6 +650,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showCompraBonificadaForm, setShowCompraBonificadaForm] = useState(false);
   const [showCompraDePontosForm, setShowCompraDePontosForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
+  const [editingDependente, setEditingDependente] = useState(null);
   const [editingEmission, setEditingEmission] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
