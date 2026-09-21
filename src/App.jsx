@@ -743,8 +743,8 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const updateSlice = (key) => (updater) =>
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
 
-  const accounts = db?.accounts || [], emissions = db?.emissions || [], proximasViagens = db?.proximasViagens || [];
-  const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions"), setProximasViagens = updateSlice("proximasViagens");
+  const accounts = db?.accounts || [], emissions = db?.emissions || [], proximasViagens = db?.proximasViagens || [], dependentes = db?.dependentes || [];
+  const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions"), setProximasViagens = updateSlice("proximasViagens"), setDependentes = updateSlice("dependentes");
   const displayName = profile?.nome?.trim() || userEmail;
 
   const emissionsCalc = useMemo(() => emissions.map((em) => {
