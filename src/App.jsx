@@ -196,6 +196,27 @@ function baixarContratoPDF(texto, assinaturaBase64, assinadoEmIso, nome) {
   doc.save(`contrato-viaja-que-rola-${(nome || "cliente").replace(/\s+/g, "-").toLowerCase()}.pdf`);
 }
 const maskCpf = (cpf) => { if (!cpf) return "—"; const d = onlyDigits(cpf); if (d.length < 11) return cpf; return `***.${d.slice(3, 6)}.***-${d.slice(9, 11)}`; };
+
+function formatCpfInput(v) {
+  const d = onlyDigits(v).slice(0, 11);
+  if (d.length > 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`;
+  if (d.length > 6) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}`;
+  if (d.length > 3) return `${d.slice(0, 3)}.${d.slice(3, 6)}`;
+  return d;
+}
+function formatTelefoneInput(v) {
+  const d = onlyDigits(v).slice(0, 11);
+  if (d.length > 10) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
+  if (d.length > 6) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6, 10)}`;
+  if (d.length > 2) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length > 0) return `(${d}`;
+  return d;
+}
+function ownerLabel(titularId, dependentes) {
+  if (!titularId) return "Titular";
+  const dep = (dependentes || []).find((d) => d.id === titularId);
+  return dep ? dep.nome : "Titular";
+}
 const formatCpfFull = (cpf) => { const d = onlyDigits(cpf); if (d.length !== 11) return cpf || "________________"; return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`; };
 
 const PROGRAM_COLORS = {
@@ -360,7 +381,7 @@ const APP_CSS = `
     --ink: #EAF1FF; --muted: #8CA2C9;
     color-scheme: dark;
     font-family: 'Space Grotesk', sans-serif;
-    background: radial-gradient(circle at 15Page_Down% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
+    background: radial-gradient(circle at 15% -10%, rgba(94,208,255,0.16), transparent 45%), radial-gradient(circle at 100% 0%, rgba(46,111,242,0.18), transparent 40%), linear-gradient(160deg, var(--bg), var(--bg-2) 70%);
     color: var(--ink); min-height: 100vh; box-sizing: border-box; overflow: hidden;
   }
   .mk-root * { box-sizing: border-box; }
