@@ -310,6 +310,7 @@ const MODULES = [
   { key: "cartoesCredito", label: "Cartões de Crédito", icon: WalletCards, fields: [
       { key: "nome", label: "Nome", type: "text" },
       { key: "cartaoCredito", label: "Cartão de Crédito", type: "text" },
+      { key: "titularId", label: "Pertence a", type: "titular" },
   ]},
   { key: "assinaturas", label: "Assinaturas", icon: CreditCard, fields: [
       { key: "programaId", label: "Programa", type: "relation", relationTo: "accounts", labelField: "programa" },
@@ -357,6 +358,7 @@ const MODULES = [
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "programas", label: "Programas", icon: Wallet },
+  { key: "dependentes", label: "Dependentes", icon: Users },
   { key: "cartoesCredito", label: "Cartões de Crédito", icon: WalletCards },
   { key: "proximasViagens", label: "Planejamento de Viagens", icon: MapPin },
   { key: "emissoes", label: "Emissões", icon: PlaneTakeoff },
@@ -370,7 +372,7 @@ const NAV = [
   { key: "contrato", label: "Contrato", icon: PenTool },
 ];
 
-const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], cartoesCredito: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
+const EMPTY_DB = { accounts: [], emissions: [], proximasViagens: [], dependentes: [], cartoesCredito: [], assinaturas: [], passageiros: [], reservas: [], comprasBonificadas: [], compraDePontos: [], creditosCartao: [], transferencias: [], vendasDeMilhas: [], resgates: [] };
 
 // ---------- CSS compartilhado entre o painel do cliente e o do admin ----------
 const APP_CSS = `
