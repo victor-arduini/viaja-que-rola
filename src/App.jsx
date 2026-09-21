@@ -858,6 +858,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     return Object.values(map);
   }, [accounts]);
 
+  const addDependente = (data) => setDependentes((prev) => [...prev, { id: uid(), ...data }]);
+  const updateDependente = (id, data) => setDependentes((prev) => prev.map((d) => d.id === id ? { ...d, ...data, id } : d));
+  const removeDependente = (id) => setDependentes((prev) => prev.filter((d) => d.id !== id));
   const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
   const updateAccount = (id, data) => setAccounts((prev) => prev.map((a) => a.id === id ? { ...a, ...data, id } : a));
   const [signingContract, setSigningContract] = useState(false);
