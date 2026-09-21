@@ -517,6 +517,9 @@ function renderCell(field, row, allData) {
     const found = (allData[field.relationTo] || []).find((r) => r.id === v);
     return found ? found[field.labelField] : "—";
   }
+  if (field.type === "titular") {
+    return ownerLabel(v, allData.dependentes);
+  }
   if (field.type === "currency") {
     const num = Number(v) || 0;
     return <span className={num < 0 ? "mk-negative" : ""}>{formatBRL(num)}</span>;
@@ -525,10 +528,14 @@ function renderCell(field, row, allData) {
   if (field.type === "number") return (Number(v) || 0).toLocaleString("pt-BR");
   return v || "—";
 }
+function inheritedOwnerField(schema) {
+  return schema.fields.find((f) => f.type === "relation" && f.relationTo === "accounts");
+}
 
 function DataModule({ schema, data, setData, allData }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const ownerField = inheritedOwnerField(schema);
 
   const save = (values) => {
     if (editing) setData((prev) => prev.map((d) => (d.id === editing.id ? { ...editing, ...values, id: editing.id } : d)));
@@ -548,17 +555,17 @@ function DataModule({ schema, data, setData, allData }) {
       ) : (
         <div className="mk-table-wrap">
           <table className="mk-table">
-            <thead><tr>{schema.fields.map((f) => <th key={f.key}>{f.label}</th>)}<th></th></tr></thead>
+            <thead><tr>{schema.fields.map((f) => <th key={f.key}>{f.label}</th>)}{ownerField && <th>Pertence a</th>}<th></th></tr></thead>
             <tbody>
-              {data.map((row) => (
+              {data.map((row) => { const conta = ownerField ? (allData.accounts || []).find((a) => a.id === row[ownerField.key]) : null; return (
                 <tr key={row.id}>
-                  {schema.fields.map((f) => <td key={f.key}>{renderCell(f, row, allData)}</td>)}
+                  {schema.fields.map((f) => <td key={f.key}>{renderCell(f, row, allData)}</td>)}{ownerField && <td><span className="mk-badge">{ownerLabel(conta?.titularId, allData.dependentes)}</span></td>}
                   <td>
                     <button className="mk-iconbtn" onClick={() => { setEditing(row); setShowForm(true); }}><Pencil size={14} /></button>
                     <button className="mk-iconbtn" onClick={() => remove(row.id)}><Trash2 size={14} /></button>
                   </td>
                 </tr>
-              ))}
+              ); })}
             </tbody>
           </table>
         </div>
