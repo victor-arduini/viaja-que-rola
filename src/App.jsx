@@ -606,6 +606,12 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
                 {(allData[f.relationTo] || []).map((r) => <option key={r.id} value={r.id}>{r[f.labelField]}</option>)}
               </select>
             )}
+            {f.type === "titular" && (
+              <select value={form[f.key]} onChange={(e) => set(f.key, e.target.value)}>
+                <option value="">Titular da conta</option>
+                {(allData.dependentes || []).map((dep) => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
+              </select>
+            )}
             {f.type === "date" && <input type="date" value={form[f.key]} onChange={(e) => set(f.key, e.target.value)} />}
             {(f.type === "number" || f.type === "currency") && (
               <input type="number" step={f.type === "currency" ? "0.01" : "1"} value={form[f.key]} onChange={(e) => set(f.key, e.target.value)} />
