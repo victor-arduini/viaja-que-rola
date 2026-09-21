@@ -1541,6 +1541,32 @@ function SignaturePad({ onConfirm, saving, error }) {
   );
 }
 
+function DependenteFormModal({ initial, onClose, onSave }) {
+  const [form, setForm] = useState({
+    nome: initial?.nome || "",
+    parentesco: initial?.parentesco || "",
+    dataNascimento: initial?.dataNascimento || "",
+    cpf: initial?.cpf || "",
+    telefone: initial?.telefone || "",
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
+        <h3>{initial ? "Editar dependente" : "Novo dependente"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Nome</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Nome completo" /></div>
+        <div className="mk-form-row"><label>Grau de parentesco</label><input value={form.parentesco} onChange={(e) => set("parentesco", e.target.value)} placeholder="Ex.: Cônjuge, Filho(a), Mãe..." /></div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Data de nascimento</label><input type="date" value={form.dataNascimento} onChange={(e) => set("dataNascimento", e.target.value)} /></div>
+          <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", formatCpfInput(e.target.value))} placeholder="000.000.000-00" /></div>
+        </div>
+        <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", formatTelefoneInput(e.target.value))} placeholder="(00) 00000-0000" /></div>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.nome || !form.parentesco} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar dependente"}</button>
+      </div>
+    </div>
+  );
+}
+
 function AccountFormModal({ initial, dependentes, onClose, onSave }) {
   const initialTipo = initial ? inferTipo(initial) : "Aéreo";
   const initialIsCustom = initial && !MARCAS_POR_TIPO[initialTipo].includes(initial.programa);
