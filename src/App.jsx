@@ -1229,7 +1229,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-ticket" key={a.id}>
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
-                          <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span></span>
+                          <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span><span className="mk-badge" style={{ background: a.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: a.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(a.titularId, dependentes)}</span></span>
                           <span>
                             <button className="mk-iconbtn" onClick={() => { setEditingAccount(a); setShowAccountForm(true); }} title="Editar"><Pencil size={15} /></button>
                             <button className="mk-iconbtn" onClick={() => removeAccount(a.id)} title="Excluir"><Trash2 size={15} /></button>
@@ -1246,6 +1246,45 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       <div className="mk-ticket-side">
                         <div><div className="mk-field" style={{ textAlign: "right" }}>Saldo</div><div className="mk-mono" style={{ fontSize: 19, fontWeight: 700 }}>{Number(a.saldo).toLocaleString("pt-BR")}</div></div>
                         <div className="mk-field">Validade: {formatDate(a.validade)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "dependentes" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Dependentes</h2>
+                <button className="mk-btn" onClick={() => { setEditingDependente(null); setShowDependenteForm(true); }}><Plus size={15} /> Novo dependente</button>
+              </div>
+              {dependentes.length === 0 ? (
+                <div className="mk-empty">Nenhum dependente cadastrado. Cadastre cônjuges ou familiares próximos para organizar o que pertence a cada um.</div>
+              ) : (
+                <div className="mk-card-list">
+                  {dependentes.map((d) => (
+                    <div className="mk-ticket" key={d.id}>
+                      <div className="mk-ticket-main">
+                        <div className="mk-ticket-row">
+                          <span className="mk-ticket-title"><User size={15} /> {d.nome}<span className="mk-badge">{d.parentesco}</span></span>
+                          <span>
+                            <button className="mk-iconbtn" onClick={() => { setEditingDependente(d); setShowDependenteForm(true); }} title="Editar"><Pencil size={15} /></button>
+                            <button className="mk-iconbtn" onClick={() => removeDependente(d.id)} title="Excluir"><Trash2 size={15} /></button>
+                          </span>
+                        </div>
+                        {d.cpf && (
+                          <div className="mk-field" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+                            CPF: <b>{showCpf[d.id] ? d.cpf : maskCpf(d.cpf)}</b>
+                            <button className="mk-eyebtn" onClick={() => setShowCpf((s) => ({ ...s, [d.id]: !s[d.id] }))}>{showCpf[d.id] ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+                          </div>
+                        )}
+                        <div className="mk-field">Telefone: <b>{d.telefone || "—"}</b></div>
+                      </div>
+                      <div className="mk-ticket-side">
+                        <div className="mk-field" style={{ textAlign: "right" }}>Nascimento</div>
+                        <div className="mk-mono" style={{ fontWeight: 700 }}>{formatDate(d.dataNascimento)}</div>
                       </div>
                     </div>
                   ))}
