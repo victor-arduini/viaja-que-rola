@@ -1346,7 +1346,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-ticket" key={e.id}>
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
-                          <span className="mk-ticket-title"><Plane size={15} /> {e.destino}<span className="mk-badge">{e.conta ? e.conta.programa : "conta removida"}</span></span>
+                          <span className="mk-ticket-title"><Plane size={15} /> {e.destino}<span className="mk-badge">{e.conta ? e.conta.programa : "conta removida"}</span><span className="mk-badge" style={{ background: e.conta?.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: e.conta?.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(e.conta?.titularId, dependentes)}</span></span>
                           <span>
                             <button className="mk-iconbtn" onClick={() => { setEditingEmission(e); setShowEmissionForm(true); }} title="Editar"><Pencil size={15} /></button>
                             <button className="mk-iconbtn" onClick={() => removeEmission(e.id)} title="Excluir"><Trash2 size={15} /></button>
@@ -1383,7 +1383,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-card-list">{reservasCalc.map((r) => (
                   <div className="mk-ticket" key={r.id}>
                     <div className="mk-ticket-main">
-                      <div className="mk-ticket-row"><span className="mk-ticket-title"><Hotel size={15} /> {r.hotel || r.destino || "Hotel"}</span><span><button className="mk-iconbtn" onClick={() => { setEditingHotel(r); setShowHotelForm(true); }} title="Editar"><Pencil size={15} /></button><button className="mk-iconbtn" onClick={() => removeHotelReservation(r.id)} title="Excluir"><Trash2 size={15} /></button></span></div>
+                      <div className="mk-ticket-row"><span className="mk-ticket-title"><Hotel size={15} /> {r.hotel || r.destino || "Hotel"}<span className="mk-badge" style={{ background: r.conta?.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: r.conta?.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(r.conta?.titularId, dependentes)}</span></span><span><button className="mk-iconbtn" onClick={() => { setEditingHotel(r); setShowHotelForm(true); }} title="Editar"><Pencil size={15} /></button><button className="mk-iconbtn" onClick={() => removeHotelReservation(r.id)} title="Excluir"><Trash2 size={15} /></button></span></div>
                       <div className="mk-field">Origem: <b>{r.origemMilhas === "saldo" ? (r.conta?.programa || "Programa removido") : `Resgate Anterior${r.conta?.programa ? ` · ${r.conta.programa}` : ""}`}</b></div>
                       <div className="mk-field">Pontos/Milhas usadas: <b>{Number(r.pontosMilhas || 0).toLocaleString("pt-BR")}</b> · Valor de mercado: <b>{formatBRL(r.valorMercado)}</b></div>
                       <div className="mk-field">Valor pago estimado: <b className="mk-negative">{formatNegativeBRL(r.custoPontos)}</b></div>
