@@ -2452,7 +2452,7 @@ function LoginScreen() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Space+Grotesk:wght@400;500;600&display=swap');
         .mk-login-wrap { --card:#0F2049; --accent:#2E6FF2; --accent-2:#5ED0FF; --ink:#EAF1FF; --muted:#8CA2C9; color-scheme:dark; font-family:'Space Grotesk',sans-serif; color: var(--ink); position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #050912; padding: 20px; }
-        .mk-login-bgimg { position: absolute; inset: 0; background-image: url('/login-bg.jpg'); background-size: cover; background-position: center 18%; z-index: 0; }
+        .mk-login-bgimg { position: absolute; inset: 0; background-image: url('/login-bg.jpg'); background-size: cover; background-position: left center; z-index: 0; }
         .mk-login-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,9,18,0.35) 0%, rgba(5,9,18,0.55) 45%, rgba(5,9,18,0.88) 100%), radial-gradient(circle at 85% 25%, rgba(46,111,242,0.12), transparent 55%); z-index: 1; }
         .mk-login-card { position: relative; z-index: 2; background: rgba(15,32,73,0.72); backdrop-filter: blur(6px); border: 1px solid rgba(94,208,255,0.22); border-radius: 14px; padding: 32px; width: 100%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
         .mk-login-card h1 { font-family: 'Sora', sans-serif; font-weight: 800; font-size: 22px; margin: 4px 0 4px; background: linear-gradient(90deg, var(--ink), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -2465,7 +2465,7 @@ function LoginScreen() {
         .mk-login-card .brand .sub { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent-2); }
         .mk-login-card .brand h1 { margin: 0; }
         @media (max-width: 640px) {
-          .mk-login-bgimg { background-position: left center; }
+          .mk-login-bgimg { background-position: center center; }
           .mk-login-card { padding: 26px 22px; }
         }
       `}</style>
