@@ -1464,7 +1464,8 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
         </div>
       </div>
 
-      {showAccountForm && <AccountFormModal initial={editingAccount} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} onSave={(d) => { editingAccount ? updateAccount(editingAccount.id, d) : addAccount(d); setShowAccountForm(false); setEditingAccount(null); }} />}
+      {showAccountForm && <AccountFormModal initial={editingAccount} dependentes={dependentes} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} onSave={(d) => { editingAccount ? updateAccount(editingAccount.id, d) : addAccount(d); setShowAccountForm(false); setEditingAccount(null); }} />}
+      {showDependenteForm && <DependenteFormModal initial={editingDependente} onClose={() => { setShowDependenteForm(false); setEditingDependente(null); }} onSave={(d) => { editingDependente ? updateDependente(editingDependente.id, d) : addDependente(d); setShowDependenteForm(false); setEditingDependente(null); }} />}
       {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
       {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
       {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
