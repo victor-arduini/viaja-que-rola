@@ -1402,13 +1402,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <button className="mk-btn" onClick={() => { setEditingTransfer(null); setShowTransferForm(true); }} disabled={accounts.length === 0}><Plus size={15} /> Nova Transferência</button>
               </div>
               {(db.transferencias || []).length === 0 ? <div className="mk-empty">Nenhuma transferência registrada ainda.</div> : (
-                <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Origem</th><th>Destino</th><th>Pontos transferidos</th><th>Bônus (%)</th><th>Pontos creditados</th><th>Data</th><th></th></tr></thead><tbody>
+                <div className="mk-table-wrap"><table className="mk-table"><thead><tr><th>Origem</th><th>Destino</th><th>Pontos transferidos</th><th>Bônus (%)</th><th>Pontos creditados</th><th>Pertence a</th><th>Data</th><th></th></tr></thead><tbody>
                   {(db.transferencias || []).map((t) => {
                     const origem = accounts.find((a) => a.id === t.origemId), destino = accounts.find((a) => a.id === t.destinoId);
                     return <tr key={t.id}>
                       <td>{origem?.programa || "—"}</td><td>{destino?.programa || "—"}</td>
                       <td>{Number(t.pontos || 0).toLocaleString("pt-BR")}</td><td>{Number(t.bonusPct || 0)}</td>
                       <td><b style={{ color: "var(--green)" }}>{Number(t.pontosCreditados || 0).toLocaleString("pt-BR")}</b></td>
+                      <td><span className="mk-badge">{ownerLabel(destino?.titularId, dependentes)}</span></td>
                       <td>{formatDate(t.data)}</td>
                       <td><button className="mk-iconbtn" onClick={() => { setEditingTransfer(t); setShowTransferForm(true); }} title="Editar"><Pencil size={14} /></button><button className="mk-iconbtn" onClick={() => removeTransfer(t.id)} title="Excluir"><Trash2 size={14} /></button></td>
                     </tr>;
@@ -1432,7 +1433,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-ticket" key={c.id}>
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
-                          <span className="mk-ticket-title"><Gift size={15} /> {c.loja || "Compra"}<span className="mk-badge">{conta?.programa || "conta removida"}</span></span>
+                          <span className="mk-ticket-title"><Gift size={15} /> {c.loja || "Compra"}<span className="mk-badge">{conta?.programa || "conta removida"}</span><span className="mk-badge" style={{ background: conta?.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: conta?.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(conta?.titularId, dependentes)}</span></span>
                           <span><button className="mk-iconbtn" onClick={() => { setEditingCompraBonificada(c); setShowCompraBonificadaForm(true); }} title="Editar"><Pencil size={15} /></button><button className="mk-iconbtn" onClick={() => removeCompraBonificada(c.id)} title="Excluir"><Trash2 size={15} /></button></span>
                         </div>
                         <div className="mk-field">Compra: <b>{formatDate(c.data)}</b> · Previsão de crédito: <b>{formatDate(c.dataPrevistaCredito)}</b></div>
