@@ -217,6 +217,22 @@ function ownerLabel(titularId, dependentes) {
   const dep = (dependentes || []).find((d) => d.id === titularId);
   return dep ? dep.nome : "Titular";
 }
+// Recalcula o custo médio por milheiro (cpm) de uma conta ao ADICIONAR pontos com custo conhecido
+// (ex.: comprou X pontos por R$Y — isso entra na média ponderada com o que já existia)
+function blendCpm(saldoAtual, cpmAtual, pontosAdicionados, custoAdicionado) {
+  const saldoNovo = Number(saldoAtual || 0) + Number(pontosAdicionados || 0);
+  if (saldoNovo <= 0) return 0;
+  const custoTotalAntes = (Number(saldoAtual || 0) / 1000) * Number(cpmAtual || 0);
+  return (custoTotalAntes + Number(custoAdicionado || 0)) / (saldoNovo / 1000);
+}
+// Reverte a contribuição de uma aquisição anterior (usado ao editar/excluir uma compra/transferência)
+function unblendCpm(saldoAtual, cpmAtual, pontosARemover, custoARemover) {
+  const saldoAntes = Math.max(0, Number(saldoAtual || 0) - Number(pontosARemover || 0));
+  if (saldoAntes <= 0) return { saldo: saldoAntes, cpm: 0 };
+  const custoTotalAtual = (Number(saldoAtual || 0) / 1000) * Number(cpmAtual || 0);
+  const custoTotalAntes = custoTotalAtual - Number(custoARemover || 0);
+  return { saldo: saldoAntes, cpm: Math.max(0, custoTotalAntes) / (saldoAntes / 1000) };
+}
 const formatCpfFull = (cpf) => { const d = onlyDigits(cpf); if (d.length !== 11) return cpf || "________________"; return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`; };
 
 const PROGRAM_COLORS = {
@@ -603,7 +619,7 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
             {f.type === "relation" && (
               <select value={form[f.key]} onChange={(e) => set(f.key, e.target.value)}>
                 {(allData[f.relationTo] || []).length === 0 && <option value="">Nenhum cadastrado</option>}
-                {(allData[f.relationTo] || []).map((r) => <option key={r.id} value={r.id}>{r[f.labelField]}</option>)}
+                {(allData[f.relationTo] || []).map((r) => <option key={r.id} value={r.id}>{r[f.labelField]}{f.relationTo === "accounts" ? ` (${ownerLabel(r.titularId, allData.dependentes)})` : ""}</option>)}
               </select>
             )}
             {f.type === "titular" && (
@@ -835,18 +851,21 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     const map = {};
     accounts.forEach((a) => {
       const key = a.programa || "Outro";
-      if (!map[key]) map[key] = { programa: key, saldo: 0, cpmSum: 0, cpmCount: 0, cpfs: new Set() };
+      if (!map[key]) map[key] = { programa: key, saldo: 0, cpmSum: 0, cpmCount: 0, cpfs: new Set(), porDono: {} };
       map[key].saldo += Number(a.saldo || 0);
       map[key].cpmSum += Number(a.cpm || 0);
       map[key].cpmCount += 1;
       map[key].cpfs.add(a.cpf);
+      const donoLabel = ownerLabel(a.titularId, dependentes);
+      map[key].porDono[donoLabel] = (map[key].porDono[donoLabel] || 0) + Number(a.saldo || 0);
     });
     return Object.values(map).map((p) => ({
       ...p,
       cpmAvg: p.cpmCount ? p.cpmSum / p.cpmCount : 0,
       cpfCount: p.cpfs.size,
+      donoBreakdown: Object.entries(p.porDono).sort((a, b) => b[1] - a[1]),
     })).sort((a, b) => b.saldo - a.saldo);
-  }, [accounts, db]);
+  }, [accounts, db, dependentes]);
 
   const cpfGroups = useMemo(() => {
     const map = {};
@@ -980,17 +999,21 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     });
   };
 
-  // ---- Transferências: debita da origem e credita no destino já com o bônus aplicado ----
+  // ---- Transferências: debita da origem e credita no destino já com o bônus aplicado.
+  // O custo do lote transferido (baseado no custo médio real da origem) vira parte do
+  // custo médio do destino, já que o destino agora tem MAIS pontos pelo MESMO dinheiro.
   const calcTransferCreditado = (data) => Math.round(Number(data.pontos || 0) * (1 + Number(data.bonusPct || 0) / 100));
   const addTransfer = (data) => {
     setDb((prev) => {
       const creditado = calcTransferCreditado(data);
+      const origemAntes = (prev.accounts || []).find((a) => a.id === data.origemId);
+      const custoMovido = origemAntes ? (Number(data.pontos || 0) / 1000) * Number(origemAntes.cpm || 0) : 0;
       const nextAccounts = (prev.accounts || []).map((a) => {
         if (a.id === data.origemId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontos || 0)) };
-        if (a.id === data.destinoId) return { ...a, saldo: Number(a.saldo || 0) + creditado };
+        if (a.id === data.destinoId) return { ...a, saldo: Number(a.saldo || 0) + creditado, cpm: blendCpm(a.saldo, a.cpm, creditado, custoMovido) };
         return a;
       });
-      return { ...prev, accounts: nextAccounts, transferencias: [...(prev.transferencias || []), { id: uid(), ...data, pontosCreditados: creditado }] };
+      return { ...prev, accounts: nextAccounts, transferencias: [...(prev.transferencias || []), { id: uid(), ...data, pontosCreditados: creditado, custoMovido }] };
     });
   };
   const updateTransfer = (id, data) => {
@@ -1000,17 +1023,19 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (old) {
         nextAccounts = nextAccounts.map((a) => {
           if (a.id === old.origemId) return { ...a, saldo: Number(a.saldo || 0) + Number(old.pontos || 0) };
-          if (a.id === old.destinoId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontosCreditados || 0)) };
+          if (a.id === old.destinoId) { const rev = unblendCpm(a.saldo, a.cpm, old.pontosCreditados, old.custoMovido); return { ...a, saldo: rev.saldo, cpm: rev.cpm }; }
           return a;
         });
       }
       const creditado = calcTransferCreditado(data);
+      const origemAntes = nextAccounts.find((a) => a.id === data.origemId);
+      const custoMovido = origemAntes ? (Number(data.pontos || 0) / 1000) * Number(origemAntes.cpm || 0) : 0;
       nextAccounts = nextAccounts.map((a) => {
         if (a.id === data.origemId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(data.pontos || 0)) };
-        if (a.id === data.destinoId) return { ...a, saldo: Number(a.saldo || 0) + creditado };
+        if (a.id === data.destinoId) return { ...a, saldo: Number(a.saldo || 0) + creditado, cpm: blendCpm(a.saldo, a.cpm, creditado, custoMovido) };
         return a;
       });
-      return { ...prev, accounts: nextAccounts, transferencias: (prev.transferencias || []).map((t) => t.id === id ? { ...t, ...data, id, pontosCreditados: creditado } : t) };
+      return { ...prev, accounts: nextAccounts, transferencias: (prev.transferencias || []).map((t) => t.id === id ? { ...t, ...data, id, pontosCreditados: creditado, custoMovido } : t) };
     });
   };
   const removeTransfer = (id) => {
@@ -1020,7 +1045,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       if (t) {
         nextAccounts = nextAccounts.map((a) => {
           if (a.id === t.origemId) return { ...a, saldo: Number(a.saldo || 0) + Number(t.pontos || 0) };
-          if (a.id === t.destinoId) return { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(t.pontosCreditados || 0)) };
+          if (a.id === t.destinoId) { const rev = unblendCpm(a.saldo, a.cpm, t.pontosCreditados, t.custoMovido); return { ...a, saldo: rev.saldo, cpm: rev.cpm }; }
           return a;
         });
       }
@@ -1028,13 +1053,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     });
   };
 
-  // ---- Compras Bonificadas: só credita a conta quando o Status vira "Creditado" ----
+  // ---- Compras Bonificadas: só credita a conta quando o Status vira "Creditado".
+  // O valor pago entra na média ponderada do custo médio por milheiro da conta.
   const calcPontosCompraBonificada = (data) => Math.round(Number(data.valor || 0) * Number(data.multiplicador || 0));
   const addCompraBonificada = (data) => {
     setDb((prev) => {
       const pontos = calcPontosCompraBonificada(data);
       const shouldCredit = data.status === "Creditado";
-      const nextAccounts = shouldCredit ? (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + pontos } : a) : (prev.accounts || []);
+      const nextAccounts = shouldCredit ? (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + pontos, cpm: blendCpm(a.saldo, a.cpm, pontos, data.valor) } : a) : (prev.accounts || []);
       return { ...prev, accounts: nextAccounts, comprasBonificadas: [...(prev.comprasBonificadas || []), { id: uid(), ...data, pontos, saldoCreditado: shouldCredit }] };
     });
   };
@@ -1043,12 +1069,12 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       const old = (prev.comprasBonificadas || []).find((c) => c.id === id);
       let nextAccounts = [...(prev.accounts || [])];
       if (old?.saldoCreditado) {
-        nextAccounts = nextAccounts.map((a) => a.id === old.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontos || 0)) } : a);
+        nextAccounts = nextAccounts.map((a) => { if (a.id !== old.programaId) return a; const rev = unblendCpm(a.saldo, a.cpm, old.pontos, old.valor); return { ...a, saldo: rev.saldo, cpm: rev.cpm }; });
       }
       const pontos = calcPontosCompraBonificada(data);
       const shouldCredit = data.status === "Creditado";
       if (shouldCredit) {
-        nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + pontos } : a);
+        nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + pontos, cpm: blendCpm(a.saldo, a.cpm, pontos, data.valor) } : a);
       }
       return { ...prev, accounts: nextAccounts, comprasBonificadas: (prev.comprasBonificadas || []).map((c) => c.id === id ? { ...c, ...data, id, pontos, saldoCreditado: shouldCredit } : c) };
     });
@@ -1056,18 +1082,20 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const removeCompraBonificada = (id) => {
     setDb((prev) => {
       const c = (prev.comprasBonificadas || []).find((x) => x.id === id);
-      const nextAccounts = c?.saldoCreditado ? (prev.accounts || []).map((a) => a.id === c.programaId
-        ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(c.pontos || 0)) }
-        : a) : (prev.accounts || []);
+      let nextAccounts = prev.accounts || [];
+      if (c?.saldoCreditado) {
+        nextAccounts = nextAccounts.map((a) => { if (a.id !== c.programaId) return a; const rev = unblendCpm(a.saldo, a.cpm, c.pontos, c.valor); return { ...a, saldo: rev.saldo, cpm: rev.cpm }; });
+      }
       return { ...prev, accounts: nextAccounts, comprasBonificadas: (prev.comprasBonificadas || []).filter((x) => x.id !== id) };
     });
   };
 
-  // ---- Compra de Pontos: crédito imediato e automático na conta ----
+  // ---- Compra de Pontos: crédito imediato e automático na conta, e o valor pago
+  // entra na média ponderada do custo médio por milheiro real da conta ----
   const addCompraDePontos = (data) => {
     setDb((prev) => ({
       ...prev,
-      accounts: (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontos || 0) } : a),
+      accounts: (prev.accounts || []).map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontos || 0), cpm: blendCpm(a.saldo, a.cpm, data.pontos, data.valorPago) } : a),
       compraDePontos: [...(prev.compraDePontos || []), { id: uid(), ...data }],
     }));
   };
@@ -1075,15 +1103,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     setDb((prev) => {
       const old = (prev.compraDePontos || []).find((c) => c.id === id);
       let nextAccounts = [...(prev.accounts || [])];
-      if (old) nextAccounts = nextAccounts.map((a) => a.id === old.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(old.pontos || 0)) } : a);
-      nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontos || 0) } : a);
+      if (old) nextAccounts = nextAccounts.map((a) => { if (a.id !== old.programaId) return a; const rev = unblendCpm(a.saldo, a.cpm, old.pontos, old.valorPago); return { ...a, saldo: rev.saldo, cpm: rev.cpm }; });
+      nextAccounts = nextAccounts.map((a) => a.id === data.programaId ? { ...a, saldo: Number(a.saldo || 0) + Number(data.pontos || 0), cpm: blendCpm(a.saldo, a.cpm, data.pontos, data.valorPago) } : a);
       return { ...prev, accounts: nextAccounts, compraDePontos: (prev.compraDePontos || []).map((c) => c.id === id ? { ...c, ...data, id } : c) };
     });
   };
   const removeCompraDePontos = (id) => {
     setDb((prev) => {
       const c = (prev.compraDePontos || []).find((x) => x.id === id);
-      const nextAccounts = c ? (prev.accounts || []).map((a) => a.id === c.programaId ? { ...a, saldo: Math.max(0, Number(a.saldo || 0) - Number(c.pontos || 0)) } : a) : (prev.accounts || []);
+      const nextAccounts = c ? (prev.accounts || []).map((a) => { if (a.id !== c.programaId) return a; const rev = unblendCpm(a.saldo, a.cpm, c.pontos, c.valorPago); return { ...a, saldo: rev.saldo, cpm: rev.cpm }; }) : (prev.accounts || []);
       return { ...prev, accounts: nextAccounts, compraDePontos: (prev.compraDePontos || []).filter((x) => x.id !== id) };
     });
   };
@@ -1194,6 +1222,16 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
                       <div className="mk-field" style={{ marginTop: 10 }}>Custo Médio por Milheiro</div>
                       <div className="mk-mono" style={{ fontWeight: 700 }}>{formatBRL(p.cpmAvg)}</div>
+                      {p.donoBreakdown.length > 1 && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(234,241,255,0.1)" }}>
+                          {p.donoBreakdown.map(([dono, saldo]) => (
+                            <div key={dono} className="mk-field" style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                              <span>{dono}</span>
+                              <span className="mk-mono" style={{ color: "var(--ink)" }}>{saldo.toLocaleString("pt-BR")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1506,13 +1544,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
       {showAccountForm && <AccountFormModal initial={editingAccount} dependentes={dependentes} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} onSave={(d) => { editingAccount ? updateAccount(editingAccount.id, d) : addAccount(d); setShowAccountForm(false); setEditingAccount(null); }} />}
       {showDependenteForm && <DependenteFormModal initial={editingDependente} onClose={() => { setShowDependenteForm(false); setEditingDependente(null); }} onSave={(d) => { editingDependente ? updateDependente(editingDependente.id, d) : addDependente(d); setShowDependenteForm(false); setEditingDependente(null); }} />}
-      {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
+      {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} dependentes={dependentes} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
       {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
-      {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
-      {showCreditCardForm && <CreditCardFormModal initial={editingCreditCard} accounts={accounts} onClose={() => { setShowCreditCardForm(false); setEditingCreditCard(null); }} onSave={(d) => { editingCreditCard ? updateCreditCard(editingCreditCard.id, d) : addCreditCard(d); setShowCreditCardForm(false); setEditingCreditCard(null); }} />}
-      {showTransferForm && <TransferFormModal initial={editingTransfer} accounts={accounts} onClose={() => { setShowTransferForm(false); setEditingTransfer(null); }} onSave={(d) => { editingTransfer ? updateTransfer(editingTransfer.id, d) : addTransfer(d); setShowTransferForm(false); setEditingTransfer(null); }} />}
-      {showCompraBonificadaForm && <CompraBonificadaFormModal initial={editingCompraBonificada} accounts={accounts} onClose={() => { setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} onSave={(d) => { editingCompraBonificada ? updateCompraBonificada(editingCompraBonificada.id, d) : addCompraBonificada(d); setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} />}
-      {showCompraDePontosForm && <CompraDePontosFormModal initial={editingCompraDePontos} accounts={accounts} onClose={() => { setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} onSave={(d) => { editingCompraDePontos ? updateCompraDePontos(editingCompraDePontos.id, d) : addCompraDePontos(d); setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} />}
+      {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} dependentes={dependentes} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
+      {showCreditCardForm && <CreditCardFormModal initial={editingCreditCard} accounts={accounts} dependentes={dependentes} onClose={() => { setShowCreditCardForm(false); setEditingCreditCard(null); }} onSave={(d) => { editingCreditCard ? updateCreditCard(editingCreditCard.id, d) : addCreditCard(d); setShowCreditCardForm(false); setEditingCreditCard(null); }} />}
+      {showTransferForm && <TransferFormModal initial={editingTransfer} accounts={accounts} dependentes={dependentes} onClose={() => { setShowTransferForm(false); setEditingTransfer(null); }} onSave={(d) => { editingTransfer ? updateTransfer(editingTransfer.id, d) : addTransfer(d); setShowTransferForm(false); setEditingTransfer(null); }} />}
+      {showCompraBonificadaForm && <CompraBonificadaFormModal initial={editingCompraBonificada} accounts={accounts} dependentes={dependentes} onClose={() => { setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} onSave={(d) => { editingCompraBonificada ? updateCompraBonificada(editingCompraBonificada.id, d) : addCompraBonificada(d); setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} />}
+      {showCompraDePontosForm && <CompraDePontosFormModal initial={editingCompraDePontos} accounts={accounts} dependentes={dependentes} onClose={() => { setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} onSave={(d) => { editingCompraDePontos ? updateCompraDePontos(editingCompraDePontos.id, d) : addCompraDePontos(d); setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} />}
       {showContratoLembrete && (
         <div className="mk-modal-backdrop" onClick={() => setShowContratoLembrete(false)}>
           <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
@@ -1707,7 +1745,7 @@ function TripFormModal({ initial, onClose, onSave }) {
   );
 }
 
-function EmissionFormModal({ initial, accounts, onClose, onSave }) {
+function EmissionFormModal({ initial, accounts, dependentes, onClose, onSave }) {
   const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
   const [form, setForm] = useState({
     origemMilhas: initial?.origemMilhas || "saldo",
@@ -1739,7 +1777,7 @@ function EmissionFormModal({ initial, accounts, onClose, onSave }) {
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar emissão" : "Nova emissão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Origem das milhas</label><select value={form.origemMilhas} onChange={(e) => set("origemMilhas", e.target.value)}><option value="resgate">Resgate Anterior</option><option value="saldo">Saldo em Conta</option></select></div>
-        <div className="mk-form-row"><label>Programa</label><select value={form.accountId} onChange={(e) => set("accountId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
+        <div className="mk-form-row"><label>Programa</label><select value={form.accountId} onChange={(e) => set("accountId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
         <div className="mk-form-row"><label>Passageiros</label><select value={form.passageiros} onChange={(e) => set("passageiros", e.target.value)}>{Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
         <div className="mk-form-row"><label>Data do Resgate</label><input type="date" value={form.dataResgate} onChange={(e) => set("dataResgate", e.target.value)} /></div>
         <div className="mk-form-row"><label>Embarque-Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: CNF → LIS" /></div>
@@ -1748,13 +1786,13 @@ function EmissionFormModal({ initial, accounts, onClose, onSave }) {
         <div className="mk-form-row"><label>Valor de mercado total (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="6200" /></div>
         {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente nesse programa para debitar {Number(form.milhas || 0).toLocaleString("pt-BR")} milhas.</div>}
         {form.milhas && form.valorMercado && <div className="mk-preview">Custo total das milhas: <b className="mk-negative">{formatNegativeBRL(custoMilhas)}</b><br />Taxas totais: <b className="mk-negative">{formatNegativeBRL(form.taxas)}</b><br />Economia total: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span><br /><br /><b>Por passagem ({passageiros} passageiro{passageiros > 1 ? "s" : ""})</b><br />Valor estimado: <b>{formatBRL(valorMercadoPorPassagem)}</b><br />Custo estimado: <b className="mk-negative">{formatNegativeBRL(custoPorPassagem)}</b><br />Economia por passagem: <b style={{ color: economiaPorPassagem >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economiaPorPassagem)}</b>{form.origemMilhas === "resgate" && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa, mas o saldo não será debitado novamente.</span></>}</div>}
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave({ ...form, passageiros })}>{initial ? "Salvar alterações" : "Salvar emissão"}</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave({ ...form, passageiros, milhas: Math.round(Number(form.milhas || 0)) })}>{initial ? "Salvar alterações" : "Salvar emissão"}</button>
       </div>
     </div>
   );
 }
 
-function HotelReservationFormModal({ initial, accounts, onClose, onSave }) {
+function HotelReservationFormModal({ initial, accounts, dependentes, onClose, onSave }) {
   const eligibleAccounts = accounts;
   const initialIsResgate = initial?.origemMilhas === "resgate";
   const [form, setForm] = useState({
@@ -1782,9 +1820,9 @@ function HotelReservationFormModal({ initial, accounts, onClose, onSave }) {
           <label>Pontos/Milhas usadas</label>
           <select value={form.origemPrograma} onChange={(e) => set("origemPrograma", e.target.value)}>
             <option value="resgate">Resgate Anterior</option>
-            {eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}
+            {eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}
           </select>
-          {isResgateAnterior && <select value={form.programaResgateId} onChange={(e) => set("programaResgateId", e.target.value)}><option value="">Programa usado no resgate anterior</option>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — CPM {formatBRL(a.cpm)}</option>)}</select>}
+          {isResgateAnterior && <select value={form.programaResgateId} onChange={(e) => set("programaResgateId", e.target.value)}><option value="">Programa usado no resgate anterior</option>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — CPM {formatBRL(a.cpm)} ({ownerLabel(a.titularId, dependentes)})</option>)}</select>}
           <input type="number" value={form.pontosMilhas} onChange={(e) => set("pontosMilhas", e.target.value)} placeholder="Quantidade de pontos/milhas" />
         </div>
         <div className="mk-form-row"><label>Valor de mercado (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} /></div>
@@ -1796,12 +1834,12 @@ function HotelReservationFormModal({ initial, accounts, onClose, onSave }) {
   );
 }
 
-function CreditCardFormModal({ initial, accounts, onClose, onSave }) {
+function CreditCardFormModal({ initial, accounts, dependentes, onClose, onSave }) {
   const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
   const [form, setForm] = useState({ programaId: initial?.programaId || eligibleAccounts[0]?.id || "", pontosPorReal: initial?.pontosPorReal ?? "", faturaMes: initial?.faturaMes ?? "", pontosAcumulados: initial?.pontosAcumulados ?? "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   return <div className="mk-modal-backdrop" onClick={onClose}><div className="mk-modal" onClick={(e) => e.stopPropagation()}><h3>{initial ? "Editar Crédito de Cartão" : "Novo Crédito de Cartão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-    <div className="mk-form-row"><label>Programa ou Co-Branded</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — {inferTipo(a)}</option>)}</select></div>
+    <div className="mk-form-row"><label>Programa ou Co-Branded</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — {inferTipo(a)} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
     <div className="mk-form-row"><label>Pontos por R$</label><input type="number" step="0.01" value={form.pontosPorReal} onChange={(e) => set("pontosPorReal", e.target.value)} /></div>
     <div className="mk-form-row"><label>Fatura do mês (R$)</label><input type="number" step="0.01" value={form.faturaMes} onChange={(e) => set("faturaMes", e.target.value)} /></div>
     <div className="mk-form-row"><label>Pontos acumulados</label><input type="number" value={form.pontosAcumulados} onChange={(e) => set("pontosAcumulados", e.target.value)} /></div>
@@ -1810,7 +1848,7 @@ function CreditCardFormModal({ initial, accounts, onClose, onSave }) {
   </div></div>;
 }
 
-function TransferFormModal({ initial, accounts, onClose, onSave }) {
+function TransferFormModal({ initial, accounts, dependentes, onClose, onSave }) {
   const [form, setForm] = useState({
     origemId: initial?.origemId || accounts[0]?.id || "",
     destinoId: initial?.destinoId || accounts[0]?.id || "",
@@ -1827,8 +1865,8 @@ function TransferFormModal({ initial, accounts, onClose, onSave }) {
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Transferência" : "Nova Transferência"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-        <div className="mk-form-row"><label>Origem</label><select value={form.origemId} onChange={(e) => set("origemId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
-        <div className="mk-form-row"><label>Destino</label><select value={form.destinoId} onChange={(e) => set("destinoId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa}</option>)}</select></div>
+        <div className="mk-form-row"><label>Origem</label><select value={form.origemId} onChange={(e) => set("origemId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
+        <div className="mk-form-row"><label>Destino</label><select value={form.destinoId} onChange={(e) => set("destinoId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Pontos transferidos</label><input type="number" value={form.pontos} onChange={(e) => set("pontos", e.target.value)} placeholder="19000" /></div>
           <div className="mk-form-row"><label>Bônus (%)</label><input type="number" value={form.bonusPct} onChange={(e) => set("bonusPct", e.target.value)} placeholder="90" /></div>
@@ -1842,7 +1880,7 @@ function TransferFormModal({ initial, accounts, onClose, onSave }) {
   );
 }
 
-function CompraBonificadaFormModal({ initial, accounts, onClose, onSave }) {
+function CompraBonificadaFormModal({ initial, accounts, dependentes, onClose, onSave }) {
   const [form, setForm] = useState({
     programaId: initial?.programaId || accounts[0]?.id || "",
     data: initial?.data || new Date().toISOString().slice(0, 10),
@@ -1859,7 +1897,7 @@ function CompraBonificadaFormModal({ initial, accounts, onClose, onSave }) {
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Compra Bonificada" : "Adicionar Compra Bonificada"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <p className="mk-field" style={{ marginTop: -6, marginBottom: 12 }}>Registre os detalhes da sua compra para rastrear os pontos</p>
-        <div className="mk-form-row"><label>Conta</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa}</option>)}</select></div>
+        <div className="mk-form-row"><label>Conta</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Data da Compra</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
           <div className="mk-form-row"><label>Data Prevista Crédito</label><input type="date" value={form.dataPrevistaCredito} onChange={(e) => set("dataPrevistaCredito", e.target.value)} /></div>
@@ -1888,7 +1926,7 @@ function CompraBonificadaFormModal({ initial, accounts, onClose, onSave }) {
   );
 }
 
-function CompraDePontosFormModal({ initial, accounts, onClose, onSave }) {
+function CompraDePontosFormModal({ initial, accounts, dependentes, onClose, onSave }) {
   const [form, setForm] = useState({
     programaId: initial?.programaId || accounts[0]?.id || "",
     pontos: initial?.pontos ?? "",
@@ -1900,7 +1938,7 @@ function CompraDePontosFormModal({ initial, accounts, onClose, onSave }) {
     <div className="mk-modal-backdrop" onClick={onClose}>
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Compra de Pontos" : "Nova Compra de Pontos"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
-        <div className="mk-form-row"><label>Programa</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")}</option>)}</select></div>
+        <div className="mk-form-row"><label>Programa</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
         <div className="mk-form-cols">
           <div className="mk-form-row"><label>Pontos</label><input type="number" value={form.pontos} onChange={(e) => set("pontos", e.target.value)} placeholder="100000" /></div>
           <div className="mk-form-row"><label>Valor pago (R$)</label><input type="number" step="0.01" value={form.valorPago} onChange={(e) => set("valorPago", e.target.value)} /></div>
