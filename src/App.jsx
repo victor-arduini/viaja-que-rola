@@ -6,7 +6,7 @@ import {
   Plane, Wallet, WalletCards, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
-  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel, PenTool, CheckCircle2
+  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel, PenTool, CheckCircle2, RefreshCw
 } from "lucide-react";
 
 // Texto do contrato oficial. Dados do CONTRATANTE são preenchidos automaticamente
@@ -901,6 +901,28 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   };
   const removeAccount = (id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setEmissions((prev) => prev.filter((e) => e.accountId !== id)); };
 
+  // Recalcula o Custo Médio por Milheiro de UMA conta do zero, com base em todo o histórico
+  // de aquisições com custo conhecido (Compra de Pontos, Compras Bonificadas creditadas e
+  // Transferências recebidas). Não mexe no saldo — só corrige o custo médio.
+  // Útil pra contas antigas cujo custo médio nunca foi atualizado (feito antes dessa lógica existir).
+  const recalcularCustoMedio = (contaId) => {
+    setDb((prev) => {
+      let pontosConhecidos = 0, custoConhecido = 0;
+      (prev.compraDePontos || []).filter((c) => c.programaId === contaId).forEach((c) => {
+        pontosConhecidos += Number(c.pontos || 0); custoConhecido += Number(c.valorPago || 0);
+      });
+      (prev.comprasBonificadas || []).filter((c) => c.programaId === contaId && c.saldoCreditado).forEach((c) => {
+        pontosConhecidos += Number(c.pontos || 0); custoConhecido += Number(c.valor || 0);
+      });
+      (prev.transferencias || []).filter((t) => t.destinoId === contaId && t.custoMovido != null).forEach((t) => {
+        pontosConhecidos += Number(t.pontosCreditados || 0); custoConhecido += Number(t.custoMovido || 0);
+      });
+      if (pontosConhecidos <= 0) return prev; // nada com custo conhecido pra recalcular
+      const novoCpm = custoConhecido / (pontosConhecidos / 1000);
+      return { ...prev, accounts: (prev.accounts || []).map((a) => a.id === contaId ? { ...a, cpm: novoCpm } : a) };
+    });
+  };
+
   const addEmission = (data) => {
     setDb((prev) => {
       const shouldDebit = data.origemMilhas === "saldo";
@@ -1270,6 +1292,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                           <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span><span className="mk-badge" style={{ background: a.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: a.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(a.titularId, dependentes)}</span></span>
                           <span>
                             <button className="mk-iconbtn" onClick={() => { setEditingAccount(a); setShowAccountForm(true); }} title="Editar"><Pencil size={15} /></button>
+                            <button className="mk-iconbtn" onClick={() => recalcularCustoMedio(a.id)} title="Recalcular custo médio com base no histórico de compras/transferências"><RefreshCw size={15} /></button>
                             <button className="mk-iconbtn" onClick={() => removeAccount(a.id)} title="Excluir"><Trash2 size={15} /></button>
                           </span>
                         </div>
