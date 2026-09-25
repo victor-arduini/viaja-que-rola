@@ -1415,7 +1415,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                         </div>
                         <div className="mk-field">Origem: <b>{e.origemMilhas === "saldo" ? "Saldo em Conta" : "Resgate Anterior"}</b> · Resgate: <b>{formatDate(e.dataResgate || e.data)}</b></div>
                         <div className="mk-field">Ida: <b>{formatDate(e.dataIda)}</b> · Volta: <b>{formatDate(e.dataVolta)}</b> · Passageiros: <b>{e.passageiros}</b> · {Number(e.milhas).toLocaleString("pt-BR")} milhas</div>
-                        <div className="mk-field">Taxas: <b className="mk-negative">{formatNegativeBRL(e.taxas)}</b> · Custo estimado total: <b className="mk-negative">{formatNegativeBRL(e.custoTotal)}</b> · Valor de mercado total: <b>{formatBRL(e.valorMercado)}</b></div>
+                        <div className="mk-field">Taxas: <b className="mk-negative">{formatNegativeBRL(e.taxas)}</b> · Custo estimado total: <b className="mk-negative">{formatNegativeBRL(e.custoTotal)}</b> · Valor de mercado total: <b>{formatBRL(e.valorMercado)}</b>{e.comprovanteUrl && <> · <a href={e.comprovanteUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)" }}>Ver comprovante</a></>}</div>
                         <div className="mk-field">Por passagem — Valor estimado: <b>{formatBRL(e.valorMercadoPorPassagem)}</b> · Custo: <b className="mk-negative">{formatNegativeBRL(e.custoPorPassagem)}</b> · Economia: <b style={{ color: e.economiaPorPassagem >= 0 ? "var(--green)" : "var(--red)" }}>{formatBRL(e.economiaPorPassagem)}</b></div>
                       </div>
                       <div className="mk-ticket-side">
@@ -1567,7 +1567,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
       {showAccountForm && <AccountFormModal initial={editingAccount} dependentes={dependentes} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} onSave={(d) => { editingAccount ? updateAccount(editingAccount.id, d) : addAccount(d); setShowAccountForm(false); setEditingAccount(null); }} />}
       {showDependenteForm && <DependenteFormModal initial={editingDependente} onClose={() => { setShowDependenteForm(false); setEditingDependente(null); }} onSave={(d) => { editingDependente ? updateDependente(editingDependente.id, d) : addDependente(d); setShowDependenteForm(false); setEditingDependente(null); }} />}
-      {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} dependentes={dependentes} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
+      {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} dependentes={dependentes} userId={userId} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
       {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
       {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} dependentes={dependentes} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
       {showCreditCardForm && <CreditCardFormModal initial={editingCreditCard} accounts={accounts} dependentes={dependentes} onClose={() => { setShowCreditCardForm(false); setEditingCreditCard(null); }} onSave={(d) => { editingCreditCard ? updateCreditCard(editingCreditCard.id, d) : addCreditCard(d); setShowCreditCardForm(false); setEditingCreditCard(null); }} />}
@@ -1768,7 +1768,7 @@ function TripFormModal({ initial, onClose, onSave }) {
   );
 }
 
-function EmissionFormModal({ initial, accounts, dependentes, onClose, onSave }) {
+function EmissionFormModal({ initial, accounts, dependentes, userId, onClose, onSave }) {
   const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
   const [form, setForm] = useState({
     origemMilhas: initial?.origemMilhas || "saldo",
@@ -1783,6 +1783,27 @@ function EmissionFormModal({ initial, accounts, dependentes, onClose, onSave }) 
     valorMercado: initial?.valorMercado ?? "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [comprovanteUrl, setComprovanteUrl] = useState(initial?.comprovanteUrl || "");
+  const [uploadingComprovante, setUploadingComprovante] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const handleUploadComprovante = async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    setUploadingComprovante(true);
+    setUploadError("");
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${userId}/${uid()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("comprovantes").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from("comprovantes").getPublicUrl(path);
+      setComprovanteUrl(data.publicUrl);
+    } catch (err) {
+      setUploadError("Não foi possível enviar a imagem. Tente novamente.");
+    } finally {
+      setUploadingComprovante(false);
+    }
+  };
   const conta = eligibleAccounts.find((a) => a.id === form.accountId);
   const cpm = conta ? Number(conta.cpm) : 0;
   const custoMilhas = (Number(form.milhas || 0) / 1000) * cpm;
@@ -1807,9 +1828,22 @@ function EmissionFormModal({ initial, accounts, dependentes, onClose, onSave }) 
         <div className="mk-form-cols"><div className="mk-form-row"><label>Data da Ida</label><input type="date" value={form.dataIda} onChange={(e) => set("dataIda", e.target.value)} /></div><div className="mk-form-row"><label>Data da Volta</label><input type="date" value={form.dataVolta} onChange={(e) => set("dataVolta", e.target.value)} /></div></div>
         <div className="mk-form-cols"><div className="mk-form-row"><label>Milhas usadas</label><input type="number" value={form.milhas} onChange={(e) => set("milhas", e.target.value)} placeholder="80000" /></div><div className="mk-form-row"><label>Taxas pagas (R$)</label><input type="number" step="0.01" value={form.taxas} onChange={(e) => set("taxas", e.target.value)} placeholder="350" /></div></div>
         <div className="mk-form-row"><label>Valor de mercado total (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="6200" /></div>
+        <div className="mk-form-row">
+          <label>Comprovante do valor de mercado (print)</label>
+          <input type="file" accept="image/*" onChange={handleUploadComprovante} disabled={uploadingComprovante} />
+          {uploadingComprovante && <span className="mk-field">Enviando...</span>}
+          {uploadError && <span className="mk-field" style={{ color: "#FF6B6B" }}>{uploadError}</span>}
+          {comprovanteUrl && (
+            <div style={{ marginTop: 8 }}>
+              <a href={comprovanteUrl} target="_blank" rel="noreferrer">
+                <img src={comprovanteUrl} alt="Comprovante do valor de mercado" style={{ maxWidth: 140, borderRadius: 8, border: "1px solid rgba(234,241,255,0.2)" }} />
+              </a>
+            </div>
+          )}
+        </div>
         {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente nesse programa para debitar {Number(form.milhas || 0).toLocaleString("pt-BR")} milhas.</div>}
         {form.milhas && form.valorMercado && <div className="mk-preview">Custo total das milhas: <b className="mk-negative">{formatNegativeBRL(custoMilhas)}</b><br />Taxas totais: <b className="mk-negative">{formatNegativeBRL(form.taxas)}</b><br />Economia total: <span className="economia" style={{ color: economia >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economia)}</span><br /><br /><b>Por passagem ({passageiros} passageiro{passageiros > 1 ? "s" : ""})</b><br />Valor estimado: <b>{formatBRL(valorMercadoPorPassagem)}</b><br />Custo estimado: <b className="mk-negative">{formatNegativeBRL(custoPorPassagem)}</b><br />Economia por passagem: <b style={{ color: economiaPorPassagem >= 0 ? "#34C495" : "#FF6B6B" }}>{formatBRL(economiaPorPassagem)}</b>{form.origemMilhas === "resgate" && <><br /><span className="mk-field">Resgate Anterior: o custo é calculado pelo milheiro do programa, mas o saldo não será debitado novamente.</span></>}</div>}
-        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave({ ...form, passageiros, milhas: Math.round(Number(form.milhas || 0)) })}>{initial ? "Salvar alterações" : "Salvar emissão"}</button>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.accountId || !form.destino || !form.dataResgate || !form.dataIda || !form.milhas || !form.valorMercado || saldoInsuficiente} onClick={() => onSave({ ...form, passageiros, milhas: Math.round(Number(form.milhas || 0)), comprovanteUrl })}>{initial ? "Salvar alterações" : "Salvar emissão"}</button>
       </div>
     </div>
   );
