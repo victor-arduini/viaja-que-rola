@@ -1794,9 +1794,9 @@ function EmissionFormModal({ initial, accounts, dependentes, userId, onClose, on
     try {
       const ext = (file.name.split(".").pop() || "png").toLowerCase();
       const path = `${userId}/${uid()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("comprovantes").upload(path, file, { upsert: true });
+      const { error: upErr } = await supabase.storage.from("Comprovantes").upload(path, file, { upsert: true });
       if (upErr) throw upErr;
-      const { data } = supabase.storage.from("comprovantes").getPublicUrl(path);
+      const { data } = supabase.storage.from("Comprovantes").getPublicUrl(path);
       setComprovanteUrl(data.publicUrl);
     } catch (err) {
       console.error("Erro ao enviar comprovante:", err);
