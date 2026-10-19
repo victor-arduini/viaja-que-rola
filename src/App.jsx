@@ -1799,7 +1799,9 @@ function EmissionFormModal({ initial, accounts, dependentes, userId, onClose, on
       const { data } = supabase.storage.from("comprovantes").getPublicUrl(path);
       setComprovanteUrl(data.publicUrl);
     } catch (err) {
-      setUploadError("Não foi possível enviar a imagem. Tente novamente.");
+      console.error("Erro ao enviar comprovante:", err);
+      const msg = err?.message || err?.error_description || String(err);
+      setUploadError(`Não foi possível enviar a imagem: ${msg}`);
     } finally {
       setUploadingComprovante(false);
     }
