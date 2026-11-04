@@ -247,6 +247,22 @@ function colorForPrograma(nome) {
   for (const k in PROGRAM_COLORS) if (key.includes(k)) return PROGRAM_COLORS[k];
   return "#2E6FF2";
 }
+// Iniciais usadas no "selo" visual de cada cia aérea/programa (não temos acesso a logos oficiais em imagem).
+function initialsForPrograma(nome) {
+  const clean = (nome || "").trim();
+  if (!clean) return "?";
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+// Selo redondo com fundo branco, iniciais e cor da marca — usado como "logo" em cards de programa.
+function ProgramLogo({ nome, size = 34 }) {
+  return (
+    <span className="mk-program-logo" style={{ width: size, height: size, fontSize: size * 0.38, color: colorForPrograma(nome) }} title={nome}>
+      {initialsForPrograma(nome)}
+    </span>
+  );
+}
 
 // Valor de mercado estimado por milheiro, usado exclusivamente no card "Patrimônio Estimado".
 const VALOR_MILHEIRO_PATRIMONIO = {
@@ -484,6 +500,29 @@ const APP_CSS = `
   .mk-programa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .mk-programa-name { font-weight: 700; font-size: 14px; }
   .mk-programa-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .mk-program-logo { background: #fff; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.35); letter-spacing: 0.5px; }
+
+  /* ---------- Cartões de Crédito (foto + benefícios) ---------- */
+  .mk-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .mk-creditcard { background: var(--card); border: 1px solid rgba(94,208,255,0.14); border-radius: 14px; overflow: hidden; position: relative; }
+  .mk-creditcard.principal { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2), 0 10px 30px rgba(46,111,242,0.18); }
+  .mk-creditcard-photo { width: 100%; aspect-ratio: 1.586 / 1; background: linear-gradient(135deg, #1a2654, #0c1430); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .mk-creditcard-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .mk-creditcard-photo .mk-creditcard-placeholder { color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; }
+  .mk-creditcard-body { padding: 14px 16px 16px; }
+  .mk-creditcard-benefits { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .mk-creditcard-benefit { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--muted); border-top: 1px solid rgba(234,241,255,0.08); padding-top: 6px; }
+  .mk-creditcard-benefit b { color: var(--ink); font-weight: 700; }
+  .mk-principal-pill { position: absolute; top: 10px; right: 10px; background: var(--accent-2); color: #06122B; font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px; padding: 4px 9px; border-radius: 999px; text-transform: uppercase; z-index: 2; }
+  .mk-principal-btn { width: 100%; margin-top: 12px; }
+
+  /* ---------- Cards "neon" do dashboard ---------- */
+  .mk-neon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; margin-bottom: 22px; }
+  .mk-neon-card { position: relative; background: radial-gradient(circle at 25% 15%, rgba(94,208,255,0.14), rgba(16,25,60,0.9) 65%), var(--card); border: 1px solid rgba(94,208,255,0.3); border-radius: 16px; padding: 18px; box-shadow: 0 0 28px rgba(46,111,242,0.16), inset 0 0 0 1px rgba(255,255,255,0.02); overflow: hidden; }
+  .mk-neon-card::before { content: ""; position: absolute; top: -40%; right: -20%; width: 180px; height: 180px; background: radial-gradient(circle, rgba(94,208,255,0.25), transparent 70%); pointer-events: none; }
+  .mk-neon-title { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--accent-2); margin-bottom: 12px; }
+  .mk-neon-body { position: relative; z-index: 1; }
+  .mk-neon-empty { color: var(--muted); font-size: 13px; }
   .mk-progress-track { height: 5px; background: rgba(234,241,255,0.1); border-radius: 4px; margin-top: 6px; overflow: hidden; }
   .mk-progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 4px; }
   .mk-switcher { position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border: 1px solid rgba(94,208,255,0.18); border-radius: 10px; min-width: 230px; max-height: 320px; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.5); z-index: 40; padding: 6px; }
@@ -658,6 +697,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showCpf, setShowCpf] = useState({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showDependenteForm, setShowDependenteForm] = useState(false);
+  const [showCartaoCreditoForm, setShowCartaoCreditoForm] = useState(false);
   const [showEmissionForm, setShowEmissionForm] = useState(false);
   const [showTripForm, setShowTripForm] = useState(false);
   const [showHotelForm, setShowHotelForm] = useState(false);
@@ -667,6 +707,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showCompraDePontosForm, setShowCompraDePontosForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingDependente, setEditingDependente] = useState(null);
+  const [editingCartaoCredito, setEditingCartaoCredito] = useState(null);
   const [editingEmission, setEditingEmission] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
@@ -760,7 +801,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
 
   const accounts = db?.accounts || [], emissions = db?.emissions || [], proximasViagens = db?.proximasViagens || [], dependentes = db?.dependentes || [];
+  const cartoesCredito = db?.cartoesCredito || [];
   const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions"), setProximasViagens = updateSlice("proximasViagens"), setDependentes = updateSlice("dependentes");
+  const setCartoesCredito = updateSlice("cartoesCredito");
   const displayName = profile?.nome?.trim() || userEmail;
 
   const emissionsCalc = useMemo(() => emissions.map((em) => {
@@ -880,6 +923,10 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const addDependente = (data) => setDependentes((prev) => [...prev, { id: uid(), ...data }]);
   const updateDependente = (id, data) => setDependentes((prev) => prev.map((d) => d.id === id ? { ...d, ...data, id } : d));
   const removeDependente = (id) => setDependentes((prev) => prev.filter((d) => d.id !== id));
+  const addCartaoCredito = (data) => setCartoesCredito((prev) => [...prev, { id: uid(), ...data }]);
+  const updateCartaoCredito = (id, data) => setCartoesCredito((prev) => prev.map((c) => c.id === id ? { ...c, ...data, id } : c));
+  const removeCartaoCredito = (id) => setCartoesCredito((prev) => prev.filter((c) => c.id !== id));
+  const definirCartaoPrincipal = (id) => setCartoesCredito((prev) => prev.map((c) => ({ ...c, principal: c.id === id })));
   const addAccount = (data) => setAccounts((prev) => [...prev, { id: uid(), ...data }]);
   const updateAccount = (id, data) => setAccounts((prev) => prev.map((a) => a.id === id ? { ...a, ...data, id } : a));
   const [signingContract, setSigningContract] = useState(false);
@@ -1143,8 +1190,10 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     return (a.dataIda || a.data || "9999-12-31").localeCompare(b.dataIda || b.data || "9999-12-31");
   });
 
-  const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao", "comprasBonificadas", "compraDePontos", "transferencias"].includes(m.key));
+  const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao", "comprasBonificadas", "compraDePontos", "transferencias", "cartoesCredito"].includes(m.key));
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
+  const proximaViagem = tripsSorted[0] || null;
+  const cartaoPrincipal = cartoesCredito.find((c) => c.principal) || null;
 
   if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
 
@@ -1201,6 +1250,46 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
           {tab === "dashboard" && (
             <>
+              <div className="mk-neon-grid">
+                <div className="mk-neon-card">
+                  <div className="mk-neon-title"><MapPin size={13} /> Próximas Viagens</div>
+                  <div className="mk-neon-body">
+                    {proximaViagem ? (
+                      <>
+                        <div style={{ fontSize: 17, fontWeight: 700 }}>{proximaViagem.destino}</div>
+                        <div className="mk-field" style={{ marginTop: 4 }}>De: <b>{proximaViagem.partida || "—"}</b></div>
+                        <div className="mk-field" style={{ marginTop: 2 }}>{proximaViagem.semData ? "Sem data definida" : <>Ida: <b>{formatDate(proximaViagem.dataIda || proximaViagem.data)}</b> · Volta: <b>{formatDate(proximaViagem.dataVolta)}</b></>}</div>
+                      </>
+                    ) : <div className="mk-neon-empty">Nenhum planejamento de viagem cadastrado.</div>}
+                  </div>
+                </div>
+                <div className="mk-neon-card">
+                  <div className="mk-neon-title"><WalletCards size={13} /> Cartão Principal</div>
+                  <div className="mk-neon-body">
+                    {cartaoPrincipal ? (
+                      <>
+                        {cartaoPrincipal.imagemUrl ? (
+                          <img src={cartaoPrincipal.imagemUrl} alt={cartaoPrincipal.nome} style={{ width: "100%", borderRadius: 10, aspectRatio: "1.586/1", objectFit: "cover", marginBottom: 8 }} />
+                        ) : null}
+                        <div style={{ fontWeight: 700 }}>{cartaoPrincipal.nome}</div>
+                        <div className="mk-field">{cartaoPrincipal.cartaoCredito || "—"}</div>
+                      </>
+                    ) : <div className="mk-neon-empty">Nenhum cartão definido como principal.</div>}
+                  </div>
+                </div>
+                <div className="mk-neon-card">
+                  <div className="mk-neon-title"><Plane size={13} /> Milhas Necessárias</div>
+                  <div className="mk-neon-body">
+                    {proximaViagem && Number(proximaViagem.milhasNecessarias) > 0 ? (
+                      <>
+                        <div style={{ fontSize: 24, fontWeight: 800 }}>{Number(proximaViagem.milhasNecessarias).toLocaleString("pt-BR")}</div>
+                        <div className="mk-field" style={{ marginTop: 4 }}>para {proximaViagem.destino}</div>
+                      </>
+                    ) : <div className="mk-neon-empty">Informe as milhas necessárias no planejamento da próxima viagem.</div>}
+                  </div>
+                </div>
+              </div>
+
               <div className="mk-grid">
                 <div className="mk-stub">
                   <div className="mk-stub-label"><CreditCard size={13} /> Total de Pontos</div>
@@ -1238,7 +1327,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-programa-card" key={p.programa}>
                       <div className="mk-programa-head">
                         <span className="mk-programa-name">{p.programa}</span>
-                        <span className="mk-programa-icon" style={{ background: colorForPrograma(p.programa) }}><Plane size={14} /></span>
+                        <ProgramLogo nome={p.programa} size={32} />
                       </div>
                       <div className="mk-field">Saldo Atual</div>
                       <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
@@ -1289,7 +1378,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-ticket" key={a.id}>
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
-                          <span className="mk-ticket-title"><Plane size={15} /> {a.programa}<span className="mk-badge">{a.titular}</span><span className="mk-badge" style={{ background: a.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: a.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(a.titularId, dependentes)}</span></span>
+                          <span className="mk-ticket-title"><ProgramLogo nome={a.programa} size={24} /> {a.programa}<span className="mk-badge">{a.titular}</span><span className="mk-badge" style={{ background: a.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: a.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(a.titularId, dependentes)}</span></span>
                           <span>
                             <button className="mk-iconbtn" onClick={() => { setEditingAccount(a); setShowAccountForm(true); }} title="Editar"><Pencil size={15} /></button>
                             <button className="mk-iconbtn" onClick={() => recalcularCustoMedio(a.id)} title="Recalcular custo médio com base no histórico de compras/transferências"><RefreshCw size={15} /></button>
@@ -1354,6 +1443,52 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
             </>
           )}
 
+          {tab === "cartoesCredito" && (
+            <>
+              <div className="mk-section-title">
+                <h2>Cartões de Crédito</h2>
+                <button className="mk-btn" onClick={() => { setEditingCartaoCredito(null); setShowCartaoCreditoForm(true); }}><Plus size={15} /> Novo cartão</button>
+              </div>
+              {cartoesCredito.length === 0 ? (
+                <div className="mk-empty">Nenhum cartão cadastrado. Clique em "Novo cartão" para adicionar a foto e os benefícios.</div>
+              ) : (
+                <div className="mk-card-grid">
+                  {cartoesCredito.map((c) => {
+                    const conta = accounts.find((a) => a.id === c.programaId);
+                    return (
+                      <div className={`mk-creditcard ${c.principal ? "principal" : ""}`} key={c.id}>
+                        {c.principal && <span className="mk-principal-pill">Principal</span>}
+                        <div className="mk-creditcard-photo">
+                          {c.imagemUrl ? <img src={c.imagemUrl} alt={c.nome} /> : (
+                            <div className="mk-creditcard-placeholder"><WalletCards size={28} /><span>Sem foto</span></div>
+                          )}
+                        </div>
+                        <div className="mk-creditcard-body">
+                          <div className="mk-ticket-row">
+                            <span className="mk-ticket-title">{c.nome}<span className="mk-badge">{ownerLabel(c.titularId, dependentes)}</span></span>
+                            <span>
+                              <button className="mk-iconbtn" onClick={() => { setEditingCartaoCredito(c); setShowCartaoCreditoForm(true); }} title="Editar"><Pencil size={15} /></button>
+                              <button className="mk-iconbtn" onClick={() => removeCartaoCredito(c.id)} title="Excluir"><Trash2 size={15} /></button>
+                            </span>
+                          </div>
+                          {c.cartaoCredito && <div className="mk-field" style={{ marginTop: 4 }}>{c.cartaoCredito}</div>}
+                          <div className="mk-creditcard-benefits">
+                            <div className="mk-creditcard-benefit"><span>Pontos por dólar</span><b>{c.pontosPorDolar ? Number(c.pontosPorDolar).toLocaleString("pt-BR", { minimumFractionDigits: 1 }) : "—"}</b></div>
+                            <div className="mk-creditcard-benefit"><span>Programa</span><b style={{ display: "flex", alignItems: "center", gap: 6 }}>{conta ? <><ProgramLogo nome={conta.programa} size={18} /> {conta.programa}</> : "—"}</b></div>
+                            <div className="mk-creditcard-benefit"><span>Sala VIP</span><b>{c.salaVip && c.salaVip !== "Nenhuma" ? `${c.salaVip}${c.salaVipAcessos ? ` · ${Number(c.salaVipAcessos)} acesso(s)/ano` : " · ilimitado"}` : "Nenhuma"}</b></div>
+                          </div>
+                          {impersonating && !c.principal && (
+                            <button className="mk-btn mk-principal-btn" style={{ justifyContent: "center" }} onClick={() => definirCartaoPrincipal(c.id)}>Definir como principal</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
           {tab === "proximasViagens" && (
             <>
               <div className="mk-section-title">
@@ -1378,6 +1513,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                         <div className="mk-field" style={{ marginTop: 5 }}>
                           {v.semData ? <b>Sem data definida</b> : <>Ida: <b>{formatDate(v.dataIda || v.data)}</b> · Volta: <b>{formatDate(v.dataVolta)}</b>{Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</>}
                         </div>
+                        {Number(v.milhasNecessarias) > 0 && <div className="mk-field" style={{ marginTop: 5 }}>Milhas necessárias: <b>{Number(v.milhasNecessarias).toLocaleString("pt-BR")}</b></div>}
                         {v.observacao && <div className="mk-field" style={{ marginTop: 5 }}>Obs: {v.observacao}</div>}
                       </div>
                       <div className="mk-ticket-side">
@@ -1407,7 +1543,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                     <div className="mk-ticket" key={e.id}>
                       <div className="mk-ticket-main">
                         <div className="mk-ticket-row">
-                          <span className="mk-ticket-title"><Plane size={15} /> {e.destino}<span className="mk-badge">{e.conta ? e.conta.programa : "conta removida"}</span><span className="mk-badge" style={{ background: e.conta?.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: e.conta?.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(e.conta?.titularId, dependentes)}</span></span>
+                          <span className="mk-ticket-title">{e.conta ? <ProgramLogo nome={e.conta.programa} size={24} /> : <Plane size={15} />} {e.destino}<span className="mk-badge">{e.conta ? e.conta.programa : "conta removida"}</span><span className="mk-badge" style={{ background: e.conta?.titularId ? "var(--accent-2)" : "rgba(234,241,255,0.12)", color: e.conta?.titularId ? "#06122B" : "var(--ink)" }}>{ownerLabel(e.conta?.titularId, dependentes)}</span></span>
                           <span>
                             <button className="mk-iconbtn" onClick={() => { setEditingEmission(e); setShowEmissionForm(true); }} title="Editar"><Pencil size={15} /></button>
                             <button className="mk-iconbtn" onClick={() => removeEmission(e.id)} title="Excluir"><Trash2 size={15} /></button>
@@ -1567,6 +1703,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
       {showAccountForm && <AccountFormModal initial={editingAccount} dependentes={dependentes} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} onSave={(d) => { editingAccount ? updateAccount(editingAccount.id, d) : addAccount(d); setShowAccountForm(false); setEditingAccount(null); }} />}
       {showDependenteForm && <DependenteFormModal initial={editingDependente} onClose={() => { setShowDependenteForm(false); setEditingDependente(null); }} onSave={(d) => { editingDependente ? updateDependente(editingDependente.id, d) : addDependente(d); setShowDependenteForm(false); setEditingDependente(null); }} />}
+      {showCartaoCreditoForm && <CartaoCreditoFormModal initial={editingCartaoCredito} accounts={accounts} dependentes={dependentes} userId={userId} onClose={() => { setShowCartaoCreditoForm(false); setEditingCartaoCredito(null); }} onSave={(d) => { editingCartaoCredito ? updateCartaoCredito(editingCartaoCredito.id, d) : addCartaoCredito(d); setShowCartaoCreditoForm(false); setEditingCartaoCredito(null); }} />}
       {showEmissionForm && <EmissionFormModal initial={editingEmission} accounts={accounts} dependentes={dependentes} userId={userId} onClose={() => { setShowEmissionForm(false); setEditingEmission(null); }} onSave={(d) => { editingEmission ? updateEmission(editingEmission.id, d) : addEmission(d); setShowEmissionForm(false); setEditingEmission(null); }} />}
       {showTripForm && <TripFormModal initial={editingTrip} onClose={() => { setShowTripForm(false); setEditingTrip(null); }} onSave={(d) => { editingTrip ? updateTrip(editingTrip.id, d) : addTrip(d); setShowTripForm(false); setEditingTrip(null); }} />}
       {showHotelForm && <HotelReservationFormModal initial={editingHotel} accounts={accounts} dependentes={dependentes} onClose={() => { setShowHotelForm(false); setEditingHotel(null); }} onSave={(d) => { editingHotel ? updateHotelReservation(editingHotel.id, d) : addHotelReservation(d); setShowHotelForm(false); setEditingHotel(null); }} />}
@@ -1669,6 +1806,84 @@ function DependenteFormModal({ initial, onClose, onSave }) {
   );
 }
 
+const SALAS_VIP_OPCOES = ["Nenhuma", "Priority Pass", "Dragon Pass", "LoungeKey", "Mastercard Black Airport", "Visa Airport Companion", "Outro"];
+function CartaoCreditoFormModal({ initial, accounts, dependentes, userId, onClose, onSave }) {
+  const [form, setForm] = useState({
+    nome: initial?.nome || "",
+    cartaoCredito: initial?.cartaoCredito || "",
+    programaId: initial?.programaId || "",
+    pontosPorDolar: initial?.pontosPorDolar ?? "",
+    salaVip: initial?.salaVip || "Nenhuma",
+    salaVipAcessos: initial?.salaVipAcessos ?? "",
+    titularId: initial?.titularId || "",
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [imagemUrl, setImagemUrl] = useState(initial?.imagemUrl || "");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const handleUploadImagem = async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${userId}/cartoes/${uid()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("Comprovantes").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from("Comprovantes").getPublicUrl(path);
+      setImagemUrl(data.publicUrl);
+    } catch (err) {
+      console.error("Erro ao enviar foto do cartão:", err);
+      const msg = err?.message || err?.error_description || String(err);
+      setUploadError(`Não foi possível enviar a foto: ${msg}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+  return (
+    <div className="mk-modal-backdrop" onClick={onClose}>
+      <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
+        <h3>{initial ? "Editar cartão" : "Novo cartão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+        <div className="mk-form-row"><label>Nome / apelido do cartão</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Ex.: Itaú Click, Nubank Ultravioleta..." /></div>
+        <div className="mk-form-row"><label>Bandeira / nível</label><input value={form.cartaoCredito} onChange={(e) => set("cartaoCredito", e.target.value)} placeholder="Ex.: Visa Infinite, Mastercard Black..." /></div>
+        <div className="mk-form-row">
+          <label>Foto do cartão</label>
+          <input type="file" accept="image/*" onChange={handleUploadImagem} disabled={uploading} />
+          {uploading && <span className="mk-field">Enviando...</span>}
+          {uploadError && <span className="mk-field" style={{ color: "#FF6B6B" }}>{uploadError}</span>}
+          {imagemUrl && <div style={{ marginTop: 8 }}><img src={imagemUrl} alt="Cartão" style={{ maxWidth: 160, borderRadius: 8, border: "1px solid rgba(234,241,255,0.2)" }} /></div>}
+        </div>
+        <div className="mk-form-row">
+          <label>Programa (para onde vão os pontos)</label>
+          <select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>
+            <option value="">Nenhum / não definido</option>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} ({ownerLabel(a.titularId, dependentes)})</option>)}
+          </select>
+        </div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Pontos por dólar</label><input type="number" step="0.1" value={form.pontosPorDolar} onChange={(e) => set("pontosPorDolar", e.target.value)} placeholder="Ex.: 2.2" /></div>
+          <div className="mk-form-row"><label>Pertence a</label>
+            <select value={form.titularId} onChange={(e) => set("titularId", e.target.value)}>
+              <option value="">Titular da conta</option>
+              {(dependentes || []).map((dep) => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="mk-form-cols">
+          <div className="mk-form-row"><label>Sala VIP</label>
+            <select value={form.salaVip} onChange={(e) => set("salaVip", e.target.value)}>
+              {SALAS_VIP_OPCOES.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div className="mk-form-row"><label>Acessos por ano (0 = ilimitado)</label><input type="number" min="0" step="1" value={form.salaVipAcessos} onChange={(e) => set("salaVipAcessos", e.target.value)} disabled={form.salaVip === "Nenhuma"} /></div>
+        </div>
+        <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.nome} onClick={() => onSave({ ...form, imagemUrl })}>{initial ? "Salvar alterações" : "Salvar cartão"}</button>
+      </div>
+    </div>
+  );
+}
+
 function AccountFormModal({ initial, dependentes, onClose, onSave }) {
   const initialTipo = initial ? inferTipo(initial) : "Aéreo";
   const initialIsCustom = initial && !MARCAS_POR_TIPO[initialTipo].includes(initial.programa);
@@ -1728,6 +1943,7 @@ function TripFormModal({ initial, onClose, onSave }) {
     flexibilidade: String(initial?.flexibilidade ?? "0"),
     passageiros: String(initial?.passageiros ?? "1"),
     observacao: initial?.observacao || "",
+    milhasNecessarias: initial?.milhasNecessarias ?? "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const canSave = form.destino && form.partida && (form.semData || form.dataIda);
@@ -1761,6 +1977,7 @@ function TripFormModal({ initial, onClose, onSave }) {
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
+        <div className="mk-form-row"><label>Milhas necessárias</label><input type="number" min="0" step="1" value={form.milhasNecessarias} onChange={(e) => set("milhasNecessarias", e.target.value)} placeholder="Ex.: 80000" /></div>
         <div className="mk-form-row"><label>Observação</label><textarea rows="3" value={form.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Comentários, preferências de horário, etc." /></div>
         <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, dataIda: form.semData ? "" : form.dataIda, dataVolta: form.semData ? "" : form.dataVolta, flexibilidade: form.semData ? "0" : form.flexibilidade })}>{initial ? "Salvar alterações" : "Salvar viagem"}</button>
       </div>
@@ -2096,11 +2313,69 @@ function AdminAggregateDashboard({ clients }) {
   }, [clients]);
 
   const vencendoPlanos = clients.filter((c) => c.plano_fim).map((c) => ({ ...c, dias: Math.ceil((new Date(`${c.plano_fim}T00:00:00`) - new Date()) / 86400000) })).filter((c) => c.dias <= 30).sort((a, b) => a.dias - b.dias);
+  const planosAVencer6m = clients.filter((c) => c.plano_fim).map((c) => ({ ...c, dias: Math.ceil((new Date(`${c.plano_fim}T00:00:00`) - new Date()) / 86400000) })).filter((c) => c.dias <= 183).sort((a, b) => a.dias - b.dias);
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  const limite6mStr = (() => { const d = new Date(); d.setMonth(d.getMonth() + 6); return d.toISOString().slice(0, 10); })();
+  const viagensProx6m = agg.viagens.filter((v) => !v.semData && (v.dataIda || v.data) && (v.dataIda || v.data) >= hojeStr && (v.dataIda || v.data) <= limite6mStr);
+  const clientesComObjetivos = clients.filter((c) => c.objetivos && c.objetivos.trim());
   const valorRecebidoPlanos = clients.reduce((sum, c) => sum + Number(c.plano_valor || 0), 0);
   const contratosPendentes = clients.filter((c) => !c.contrato_assinatura);
 
   return (
     <>
+      <div className="mk-neon-grid">
+        <div className="mk-neon-card">
+          <div className="mk-neon-title"><MapPin size={13} /> Próximos Planejamentos de Viagens</div>
+          <div className="mk-neon-body">
+            {loading ? <div className="mk-neon-empty">Carregando…</div> : viagensProx6m.length === 0 ? (
+              <div className="mk-neon-empty">Nenhuma viagem planejada nos próximos 6 meses.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                {viagensProx6m.map((v) => (
+                  <div key={`${v.userId}-${v.id}`} style={{ fontSize: 12.5, borderBottom: "1px solid rgba(234,241,255,0.08)", paddingBottom: 6 }}>
+                    <b>{v.cliente}</b> — {v.destino} <span style={{ color: "var(--muted)" }}>· {formatDate(v.dataIda || v.data)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="mk-neon-card">
+          <div className="mk-neon-title"><PenTool size={13} /> Objetivos</div>
+          <div className="mk-neon-body">
+            {clientesComObjetivos.length === 0 ? (
+              <div className="mk-neon-empty">Nenhuma observação cadastrada ainda. Edite um cliente para adicionar.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                {clientesComObjetivos.map((c) => (
+                  <div key={c.id} style={{ fontSize: 12.5, borderBottom: "1px solid rgba(234,241,255,0.08)", paddingBottom: 6 }}>
+                    <b>{c.nome || c.email}</b>
+                    <div style={{ color: "var(--muted)", marginTop: 2 }}>{c.objetivos}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="mk-neon-card">
+          <div className="mk-neon-title"><CalendarClock size={13} /> Planos a Vencer</div>
+          <div className="mk-neon-body">
+            {planosAVencer6m.length === 0 ? (
+              <div className="mk-neon-empty">Nenhum plano vencendo nos próximos 6 meses.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                {planosAVencer6m.map((c) => (
+                  <div key={c.id} style={{ fontSize: 12.5, display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(234,241,255,0.08)", paddingBottom: 6 }}>
+                    <span>{c.nome || c.email}</span>
+                    <span className="mk-mono" style={{ color: c.dias < 0 ? "var(--red)" : c.dias <= 30 ? "#FFB020" : "var(--ink)" }}>{c.dias < 0 ? "vencido" : `${c.dias} dia(s)`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="mk-grid">
         <div className="mk-stub"><div className="mk-stub-label"><Users size={13} /> Clientes gerenciados</div><div className="mk-stub-value">{clients.length}</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><Wallet size={13} /> Milhas sob gestão</div><div className="mk-stub-value">{agg.totalMilhas.toLocaleString("pt-BR")}</div></div>
@@ -2213,6 +2488,7 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
     telefone: initial?.telefone || "", senha: "",
     planoValor: initial?.plano_valor || "", planoParcelas: initial?.plano_parcelas || "",
     planoInicio: initial?.plano_inicio || "", planoFim: initial?.plano_fim || "",
+    objetivos: initial?.objetivos || "",
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -2234,6 +2510,7 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
           nome: form.nome, email: form.email.trim(), cpf: onlyDigits(form.cpf) || null, telefone: form.telefone || null,
           plano_valor: form.planoValor || null, plano_parcelas: form.planoParcelas || null,
           plano_inicio: form.planoInicio || null, plano_fim: form.planoFim || null,
+          objetivos: form.objetivos || null,
         }).eq("id", initial.id);
         if (error) throw error;
       } else {
@@ -2275,6 +2552,7 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
           <div className="mk-form-row"><label>Início do plano</label><input type="date" value={form.planoInicio} onChange={(e) => set("planoInicio", e.target.value)} /></div>
           <div className="mk-form-row"><label>Fim do plano</label><input type="date" value={form.planoFim} onChange={(e) => set("planoFim", e.target.value)} /></div>
         </div>
+        <div className="mk-form-row"><label>Objetivos (observação interna, só o admin vê)</label><textarea rows="3" value={form.objetivos} onChange={(e) => set("objetivos", e.target.value)} placeholder="Ex.: foco em viagem internacional em família até dez/26..." /></div>
         {err && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{err}</div>}
         <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={loading || !form.nome || !form.email || (!isEdit && form.senha.length < 6) || (isEdit && form.senha && form.senha.length < 6)} onClick={submit}>
           {loading ? "Salvando..." : "Salvar"}
