@@ -247,7 +247,7 @@ function colorForPrograma(nome) {
   for (const k in PROGRAM_COLORS) if (key.includes(k)) return PROGRAM_COLORS[k];
   return "#2E6FF2";
 }
-// Iniciais usadas no "selo" visual de cada cia aérea/programa (não temos acesso a logos oficiais em imagem).
+// Iniciais usadas no "selo" visual de cada cia aérea/programa quando não há logo oficial disponível.
 function initialsForPrograma(nome) {
   const clean = (nome || "").trim();
   if (!clean) return "?";
@@ -255,11 +255,24 @@ function initialsForPrograma(nome) {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
 }
-// Selo redondo com fundo branco, iniciais e cor da marca — usado como "logo" em cards de programa.
+// Logos oficiais extraídas (fundo branco). Marcas sem arquivo aqui caem no selo de iniciais.
+const PROGRAM_LOGO_FILES = {
+  azul: "azul.png", smiles: "smiles.png", latam: "latam.png", "latam pass": "latam.png",
+  iberia: "iberia.png", ibéria: "iberia.png", tap: "tap.png", united: "united.png",
+  accor: "accor.png", all: "accor.png", livelo: "livelo.png", esfera: "esfera.png",
+  curtai: "curtai.png", curtaí: "curtai.png", coopera: "coopera.png",
+};
+function logoFileForPrograma(nome) {
+  const key = (nome || "").toLowerCase();
+  for (const k in PROGRAM_LOGO_FILES) if (key.includes(k)) return PROGRAM_LOGO_FILES[k];
+  return null;
+}
+// Selo redondo com fundo branco — logo oficial quando disponível, senão iniciais na cor da marca.
 function ProgramLogo({ nome, size = 34 }) {
+  const logoFile = logoFileForPrograma(nome);
   return (
     <span className="mk-program-logo" style={{ width: size, height: size, fontSize: size * 0.38, color: colorForPrograma(nome) }} title={nome}>
-      {initialsForPrograma(nome)}
+      {logoFile ? <img src={`/logos/${logoFile}`} alt={nome} style={{ width: "76%", height: "76%", objectFit: "contain" }} /> : initialsForPrograma(nome)}
     </span>
   );
 }
@@ -1192,7 +1205,8 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
   const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao", "comprasBonificadas", "compraDePontos", "transferencias", "cartoesCredito"].includes(m.key));
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
-  const proximaViagem = tripsSorted[0] || null;
+  const hojeIso = new Date().toISOString().slice(0, 10);
+  const proximaViagem = tripsSorted.find((v) => v.semData || (v.dataIda || v.data || "9999-12-31") >= hojeIso) || null;
   const cartaoPrincipal = cartoesCredito.find((c) => c.principal) || null;
 
   if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
