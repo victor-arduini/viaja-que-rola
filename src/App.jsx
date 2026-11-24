@@ -6,7 +6,7 @@ import {
   Plane, Wallet, WalletCards, TrendingUp, Eye, EyeOff, Plus, Trash2, CalendarClock, X, Award,
   LayoutDashboard, Users, Layers, PlaneTakeoff, CreditCard, User, CalendarCheck,
   Gift, ShoppingCart, BadgePercent, ArrowLeftRight, DollarSign, Ticket, ShieldCheck,
-  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel, PenTool, CheckCircle2, RefreshCw
+  Pencil, ChevronDown, ArrowLeft, KeyRound, Menu, MapPin, Hotel, PenTool, CheckCircle2, RefreshCw, Calculator
 } from "lucide-react";
 
 // Texto do contrato oficial. Dados do CONTRATANTE são preenchidos automaticamente
@@ -270,14 +270,61 @@ function logoFilesForPrograma(nome) {
   for (const k in PROGRAM_LOGO_FILES) if (key.includes(k)) return PROGRAM_LOGO_FILES[k];
   return null;
 }
+// Recorta as margens brancas/transparentes de cada logo (no navegador), para todas ficarem na mesma proporção.
+const trimLogoCache = {};
+function loadTrimmedLogo(url) {
+  if (!trimLogoCache[url]) {
+    trimLogoCache[url] = new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const w = im.naturalWidth, h = im.naturalHeight;
+          const c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(im, 0, 0);
+          const d = ctx.getImageData(0, 0, w, h).data;
+          let x0 = w, y0 = h, x1 = -1, y1 = -1;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const i = (y * w + x) * 4;
+              if (d[i] < 240 || d[i + 1] < 240 || d[i + 2] < 240) {
+                if (x < x0) x0 = x; if (x > x1) x1 = x;
+                if (y < y0) y0 = y; if (y > y1) y1 = y;
+              }
+            }
+          }
+          if (x1 < 0) { resolve(url); return; }
+          const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+          const out = document.createElement("canvas");
+          out.width = tw; out.height = th;
+          out.getContext("2d").drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+          resolve(out.toDataURL("image/png"));
+        } catch (e) { resolve(url); }
+      };
+      im.onerror = reject;
+      im.src = url;
+    });
+  }
+  return trimLogoCache[url];
+}
 // Selo redondo com fundo branco. ring = contorno azul neon escuro (usado nos cards grandes).
 function ProgramLogo({ nome, size = 34, ring = false }) {
   const files = logoFilesForPrograma(nome);
   const [idx, setIdx] = useState(0);
+  const [src, setSrc] = useState(null);
   const file = files && idx < files.length ? files[idx] : null;
+  useEffect(() => {
+    setSrc(null);
+    if (!file) return undefined;
+    let vivo = true;
+    loadTrimmedLogo(`/logos/${file}`).then((u) => { if (vivo) setSrc(u); }).catch(() => { if (vivo) setIdx((i) => i + 1); });
+    return () => { vivo = false; };
+  }, [file]);
   return (
     <span className={`mk-program-logo${ring ? " mk-program-logo-ring" : ""}`} style={{ width: size, height: size, fontSize: size * 0.38, color: colorForPrograma(nome) }} title={nome}>
-      {file ? <img src={`/logos/${file}`} alt={nome} onError={() => setIdx((i) => i + 1)} style={{ width: ring ? "78%" : "76%", height: ring ? "50%" : "76%", objectFit: "contain" }} /> : initialsForPrograma(nome)}
+      {file ? (src ? <img src={src} alt={nome} style={{ maxWidth: "78%", maxHeight: ring ? "52%" : "60%", objectFit: "contain" }} /> : null) : initialsForPrograma(nome)}
     </span>
   );
 }
@@ -405,8 +452,66 @@ const MODULES = [
   ]},
 ];
 
+// ---------- Estimativa de milhas por destino (tabela de referência +50%) ----------
+const FATOR_ESTIMATIVA = 1.5;
+const MILHAS_REGIOES = [
+  { key: "nacional", label: "Brasil (Nacional)" },
+  { key: "americaSul", label: "América do Sul" },
+  { key: "americaNorte", label: "América do Norte" },
+  { key: "europa", label: "Europa" },
+  { key: "africa", label: "África" },
+  { key: "asia", label: "Ásia" },
+];
+const MILHAS_CIAS = [
+  { key: "latam", label: "LATAM Pass", programa: "LATAM Pass", unidade: "milhas" },
+  { key: "smiles", label: "Smiles", programa: "Smiles", unidade: "milhas" },
+  { key: "azul", label: "Azul Fidelidade", programa: "Azul", unidade: "pontos" },
+];
+// [média, mínimo, máximo] por trecho, valores originais da tabela (antes do acréscimo de 50%)
+const MILHAS_TABELA_BASE = {
+  nacional:    { latam: [7500, 3000, 12000],   smiles: [12000, 6000, 18000],   azul: [10000, 5000, 15000] },
+  americaSul:  { latam: [15000, 10000, 20000], smiles: [22000, 14000, 30000],  azul: [18000, 10000, 25000] },
+  americaNorte:{ latam: [55000, 35000, 68400], smiles: [65000, 50000, 80000],  azul: [55000, 35000, 75000] },
+  europa:      { latam: [75000, 45000, 96800], smiles: [85000, 60000, 110000], azul: [70000, 45000, 95000] },
+  africa:      { latam: [65000, 45000, 75000], smiles: [75000, 55000, 95000],  azul: [75000, 50000, 100000] },
+  asia:        { latam: [110000, 85000, 135000], smiles: [140000, 110000, 170000], azul: [125000, 95000, 155000] },
+};
+function milhasPorTrecho(regiao, cia) {
+  const t = MILHAS_TABELA_BASE[regiao]?.[cia];
+  if (!t) return null;
+  return { media: Math.round(t[0] * FATOR_ESTIMATIVA), min: Math.round(t[1] * FATOR_ESTIMATIVA), max: Math.round(t[2] * FATOR_ESTIMATIVA) };
+}
+function trechosDaViagem(v) { return v?.tipoViagem === "somenteIda" ? 1 : 2; }
+// Total de milhas do planejamento de uma viagem para uma cia (trechos x passageiros).
+function milhasDaViagem(v, cia) {
+  const t = milhasPorTrecho(v?.regiao, cia);
+  if (!t) return null;
+  const mult = trechosDaViagem(v) * (Number(v.passageiros || 1) || 1);
+  return { media: t.media * mult, min: t.min * mult, max: t.max * mult };
+}
+function hojeLocalIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+// Viagem vencida = a data de volta (ou de ida, se não houver volta) já passou.
+function viagemVencida(v, hoje) {
+  if (!v || v.semData) return false;
+  const fim = v.dataVolta || v.dataIda || v.data;
+  return !!fim && fim < hoje;
+}
+function totaisMilhasPorCia(viagens) {
+  const out = {};
+  MILHAS_CIAS.forEach((c) => {
+    let media = 0, min = 0, max = 0, semInfo = 0;
+    viagens.forEach((v) => { const m = milhasDaViagem(v, c.key); if (!m) { semInfo++; return; } media += m.media; min += m.min; max += m.max; });
+    out[c.key] = { media, min, max, semInfo };
+  });
+  return out;
+}
+
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { key: "milhasNecessarias", label: "Milhas Necessárias", icon: Calculator },
   { key: "programas", label: "Programas", icon: Wallet },
   { key: "dependentes", label: "Dependentes", icon: Users },
   { key: "cartoesCredito", label: "Cartões de Crédito", icon: WalletCards },
@@ -458,7 +563,7 @@ const APP_CSS = `
   .mk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px; }
   .mk-stub { background: var(--card); color: var(--ink); border: 1px solid rgba(94,208,255,0.14); border-radius: 10px; padding: 16px 16px 14px; position: relative; overflow: hidden; }
   .mk-stub::after { content: ""; position: absolute; left: 0; right: 0; bottom: 38px; border-bottom: 1.5px dashed rgba(234,241,255,0.14); }
-  .mk-stub-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .mk-stub-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; color: var(--accent-2); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
   .mk-stub-value { font-size: 22px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
   .mk-stub-foot { margin-top: 12px; font-size: 10.5px; color: var(--muted); }
   .mk-section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
@@ -518,6 +623,12 @@ const APP_CSS = `
   .mk-programa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .mk-programa-name { font-weight: 700; font-size: 14px; }
   .mk-programa-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .mk-foco-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .mk-foco-chip { display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; border: 1px solid rgba(94,208,255,0.25); background: rgba(234,241,255,0.04); color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .mk-foco-chip:hover { border-color: rgba(94,208,255,0.6); }
+  .mk-foco-chip.active { border-color: #5ED0FF; background: linear-gradient(90deg, rgba(46,111,242,0.35), rgba(94,208,255,0.12)); box-shadow: 0 0 14px rgba(94,208,255,0.35); }
+  .mk-col-foco { background: rgba(46,111,242,0.16); }
+  .mk-faixa { display: block; font-size: 10.5px; color: var(--muted); font-style: italic; font-weight: 400; }
   .mk-program-logo-ring { border: 2px solid #1F4FD6; box-shadow: 0 0 0 3px rgba(31,79,214,0.18), 0 0 18px rgba(31,79,214,0.65), inset 0 0 8px rgba(31,79,214,0.25) !important; }
   .mk-programa-card.mk-programa-center { text-align: center; }
   .mk-programa-card.mk-programa-center .mk-program-logo { margin: 4px auto 12px; }
@@ -818,6 +929,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
     if (changed) setDb((prev) => ({ ...prev, accounts: nextAccounts, assinaturas: nextAssinaturas }));
   }, [db]);
 
+  useEffect(() => {
+    if (!db || impersonating) return;
+    const hoje = hojeLocalIso();
+    if (!(db.proximasViagens || []).some((v) => viagemVencida(v, hoje))) return;
+    setDb((prev) => ({ ...prev, proximasViagens: (prev.proximasViagens || []).filter((v) => !viagemVencida(v, hoje)) }));
+  }, [db, impersonating]);
+
   const updateSlice = (key) => (updater) =>
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
 
@@ -825,6 +943,9 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const cartoesCredito = db?.cartoesCredito || [];
   const setAccounts = updateSlice("accounts"), setEmissions = updateSlice("emissions"), setProximasViagens = updateSlice("proximasViagens"), setDependentes = updateSlice("dependentes");
   const setCartoesCredito = updateSlice("cartoesCredito");
+  const milhasFoco = db?.milhasFoco || [];
+  const setMilhasFoco = updateSlice("milhasFoco");
+  const toggleFoco = (key) => setMilhasFoco((prev) => { const p = prev || []; if (p.includes(key)) return p.filter((k) => k !== key); return p.length >= 2 ? [p[1], key] : [...p, key]; });
   const displayName = profile?.nome?.trim() || userEmail;
 
   const emissionsCalc = useMemo(() => emissions.map((em) => {
@@ -1213,8 +1334,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
 
   const activeModule = MODULES.find((m) => m.key === tab && !["reservas", "creditosCartao", "comprasBonificadas", "compraDePontos", "transferencias", "cartoesCredito"].includes(m.key));
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Dashboard";
-  const hojeIso = new Date().toISOString().slice(0, 10);
-  const proximaViagem = tripsSorted.find((v) => v.semData || (v.dataIda || v.data || "9999-12-31") >= hojeIso) || null;
+  const hojeIso = hojeLocalIso();
+  const viagensFuturas = tripsSorted.filter((v) => !viagemVencida(v, hojeIso));
+  const proximasTres = viagensFuturas.slice(0, 3);
+  const totaisMilhas = totaisMilhasPorCia(viagensFuturas);
+  const ciasFoco = MILHAS_CIAS.filter((c) => milhasFoco.includes(c.key));
   const cartaoPrincipal = cartoesCredito.find((c) => c.principal) || null;
 
   if (!db) return <div style={{ background: "#050912", minHeight: "100%", padding: 40, color: "#8CA2C9", fontFamily: "sans-serif" }}>Carregando…</div>;
@@ -1276,13 +1400,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-neon-card">
                   <div className="mk-neon-title"><MapPin size={13} /> Próximas Viagens</div>
                   <div className="mk-neon-body">
-                    {proximaViagem ? (
-                      <>
-                        <div style={{ fontSize: 17, fontWeight: 700 }}>{proximaViagem.destino}</div>
-                        <div className="mk-field" style={{ marginTop: 4 }}>De: <b>{proximaViagem.partida || "—"}</b></div>
-                        <div className="mk-field" style={{ marginTop: 2 }}>{proximaViagem.semData ? "Sem data definida" : <>Ida: <b>{formatDate(proximaViagem.dataIda || proximaViagem.data)}</b> · Volta: <b>{formatDate(proximaViagem.dataVolta)}</b></>}</div>
-                      </>
-                    ) : <div className="mk-neon-empty">Nenhum planejamento de viagem cadastrado.</div>}
+                    {proximasTres.length > 0 ? proximasTres.map((v, i) => (
+                      <div key={v.id} style={i > 0 ? { marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(94,208,255,0.18)" } : undefined}>
+                        <div style={{ fontSize: i === 0 ? 17 : 15, fontWeight: 700 }}>{v.destino}</div>
+                        <div className="mk-field" style={{ marginTop: 4 }}>De: <b>{v.partida || "—"}</b></div>
+                        <div className="mk-field" style={{ marginTop: 2 }}>{v.semData ? "Sem data definida" : <>Ida: <b>{formatDate(v.dataIda || v.data)}</b>{v.dataVolta ? <> · Volta: <b>{formatDate(v.dataVolta)}</b></> : null}</>}</div>
+                        {v.observacao ? <div className="mk-field" style={{ marginTop: 4, fontStyle: "italic" }}>Obs: {v.observacao}</div> : null}
+                      </div>
+                    )) : <div className="mk-neon-empty">Nenhum planejamento de viagem cadastrado.</div>}
                   </div>
                 </div>
                 <div className="mk-neon-card">
@@ -1302,12 +1427,27 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                 <div className="mk-neon-card">
                   <div className="mk-neon-title"><Plane size={13} /> Milhas Necessárias</div>
                   <div className="mk-neon-body">
-                    {proximaViagem && Number(proximaViagem.milhasNecessarias) > 0 ? (
+                    {ciasFoco.length === 0 ? (
                       <>
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>{Number(proximaViagem.milhasNecessarias).toLocaleString("pt-BR")}</div>
-                        <div className="mk-field" style={{ marginTop: 4 }}>para {proximaViagem.destino}</div>
+                        <div className="mk-neon-empty">Escolha a companhia foco na aba Milhas Necessárias.</div>
+                        <button className="mk-btn" style={{ marginTop: 10 }} onClick={() => setTab("milhasNecessarias")}>Escolher companhia</button>
                       </>
-                    ) : <div className="mk-neon-empty">Informe as milhas necessárias no planejamento da próxima viagem.</div>}
+                    ) : viagensFuturas.length === 0 ? (
+                      <div className="mk-neon-empty">Nenhuma viagem planejada.</div>
+                    ) : (
+                      <>
+                        {ciasFoco.map((c, i) => (
+                          <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 12, marginTop: i ? 12 : 0 }}>
+                            <ProgramLogo nome={c.programa} size={40} />
+                            <div>
+                              <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1 }}>{totaisMilhas[c.key].media.toLocaleString("pt-BR")}</div>
+                              <div className="mk-field">{c.unidade} · {c.label}</div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="mk-field" style={{ marginTop: 10 }}>Todo o planejamento: {viagensFuturas.length} {viagensFuturas.length === 1 ? "viagem" : "viagens"}{ciasFoco.some((c) => totaisMilhas[c.key].semInfo > 0) ? " (algumas sem região definida)" : ""}</div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1381,6 +1521,89 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                   </div>
                 </div>
               )}
+            </>
+          )}
+
+          {tab === "milhasNecessarias" && (
+            <>
+              <div className="mk-section-title"><h2>Milhas Necessárias</h2></div>
+
+              <div className="mk-neon-card" style={{ marginBottom: 18 }}>
+                <div className="mk-neon-title"><Plane size={13} /> Companhia foco</div>
+                <div className="mk-neon-body">
+                  <div className="mk-field">Escolha uma ou duas companhias para concentrar a acumulação de milhas. O card do Dashboard mostra o total do seu planejamento para elas.</div>
+                  <div className="mk-foco-row">
+                    {MILHAS_CIAS.map((c) => (
+                      <button key={c.key} type="button" className={`mk-foco-chip ${milhasFoco.includes(c.key) ? "active" : ""}`} onClick={() => toggleFoco(c.key)}>
+                        <ProgramLogo nome={c.programa} size={34} /> {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mk-section-title"><h2 style={{ fontSize: 15 }}>Tabela de referência (por trecho)</h2></div>
+              <div className="mk-table-wrap" style={{ marginBottom: 6 }}>
+                <table className="mk-table">
+                  <thead><tr><th>Destino (saindo do Brasil)</th>{MILHAS_CIAS.map((c) => <th key={c.key} className={milhasFoco.includes(c.key) ? "mk-col-foco" : ""}>{c.label}<span className="mk-faixa" style={{ textTransform: "none", letterSpacing: 0 }}>média/trecho</span></th>)}</tr></thead>
+                  <tbody>
+                    {MILHAS_REGIOES.map((r) => (
+                      <tr key={r.key}>
+                        <td><b>{r.label}</b></td>
+                        {MILHAS_CIAS.map((c) => {
+                          const t = milhasPorTrecho(r.key, c.key);
+                          return (
+                            <td key={c.key} className={milhasFoco.includes(c.key) ? "mk-col-foco" : ""}>
+                              <b className="mk-mono">{t.media.toLocaleString("pt-BR")}</b> {c.unidade}
+                              <span className="mk-faixa">de {t.min.toLocaleString("pt-BR")} a {t.max.toLocaleString("pt-BR")}</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mk-field" style={{ marginBottom: 22 }}>Valores estimados por trecho, já com acréscimo de 50% de margem de segurança sobre a média, o mínimo e o máximo. Azul é em pontos.</div>
+
+              <div className="mk-section-title"><h2 style={{ fontSize: 15 }}>Seu planejamento de viagens</h2></div>
+              {viagensFuturas.length === 0 ? (
+                <div className="mk-empty">Nenhum planejamento de viagem cadastrado. Cadastre em "Planejamento de Viagens" para ver o total de milhas.</div>
+              ) : (
+                <div className="mk-table-wrap">
+                  <table className="mk-table">
+                    <thead><tr><th>Viagem</th><th>Região</th><th>Trechos</th><th>Passageiros</th>{MILHAS_CIAS.map((c) => <th key={c.key} className={milhasFoco.includes(c.key) ? "mk-col-foco" : ""}>{c.label}</th>)}</tr></thead>
+                    <tbody>
+                      {viagensFuturas.map((v) => (
+                        <tr key={v.id}>
+                          <td><b>{v.destino}</b><span className="mk-faixa">{v.semData ? "Sem data definida" : formatDate(v.dataIda || v.data)}</span></td>
+                          <td>{MILHAS_REGIOES.find((r) => r.key === v.regiao)?.label || <i style={{ color: "#FFB020" }}>Defina a região</i>}</td>
+                          <td>{trechosDaViagem(v)} ({v.tipoViagem === "somenteIda" ? "só ida" : "ida e volta"})</td>
+                          <td>{Number(v.passageiros || 1)}</td>
+                          {MILHAS_CIAS.map((c) => {
+                            const m = milhasDaViagem(v, c.key);
+                            return (
+                              <td key={c.key} className={milhasFoco.includes(c.key) ? "mk-col-foco" : ""}>
+                                {m ? <><b className="mk-mono">{m.media.toLocaleString("pt-BR")}</b><span className="mk-faixa">de {m.min.toLocaleString("pt-BR")} a {m.max.toLocaleString("pt-BR")}</span></> : "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                      <tr>
+                        <td colSpan={4}><b>TOTAL DO PLANEJAMENTO</b></td>
+                        {MILHAS_CIAS.map((c) => (
+                          <td key={c.key} className={milhasFoco.includes(c.key) ? "mk-col-foco" : ""}>
+                            <b className="mk-mono" style={{ fontSize: 15 }}>{totaisMilhas[c.key].media.toLocaleString("pt-BR")}</b>
+                            <span className="mk-faixa">de {totaisMilhas[c.key].min.toLocaleString("pt-BR")} a {totaisMilhas[c.key].max.toLocaleString("pt-BR")}</span>
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="mk-field" style={{ marginTop: 8 }}>Cálculo: valor por trecho x número de trechos (ida e volta = 2) x passageiros. Viagens sem região definida não entram na soma.</div>
             </>
           )}
 
@@ -1533,7 +1756,8 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                         <div className="mk-field" style={{ marginTop: 5 }}>
                           {v.semData ? <b>Sem data definida</b> : <>Ida: <b>{formatDate(v.dataIda || v.data)}</b> · Volta: <b>{formatDate(v.dataVolta)}</b>{Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</>}
                         </div>
-                        {Number(v.milhasNecessarias) > 0 && <div className="mk-field" style={{ marginTop: 5 }}>Milhas necessárias: <b>{Number(v.milhasNecessarias).toLocaleString("pt-BR")}</b></div>}
+                        <div className="mk-field" style={{ marginTop: 5 }}>{MILHAS_REGIOES.find((r) => r.key === v.regiao)?.label || "Região não definida"} · {v.tipoViagem === "somenteIda" ? "Só ida" : "Ida e volta"}</div>
+                        {ciasFoco.map((c) => { const m = milhasDaViagem(v, c.key); return m ? <div className="mk-field" key={c.key} style={{ marginTop: 5 }}>Milhas necessárias ({c.label}): <b>{m.media.toLocaleString("pt-BR")}</b></div> : null; })}
                         {v.observacao && <div className="mk-field" style={{ marginTop: 5 }}>Obs: {v.observacao}</div>}
                       </div>
                       <div className="mk-ticket-side">
@@ -1963,10 +2187,11 @@ function TripFormModal({ initial, onClose, onSave }) {
     flexibilidade: String(initial?.flexibilidade ?? "0"),
     passageiros: String(initial?.passageiros ?? "1"),
     observacao: initial?.observacao || "",
-    milhasNecessarias: initial?.milhasNecessarias ?? "",
+    regiao: initial?.regiao || "",
+    tipoViagem: initial?.tipoViagem || "idaVolta",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const canSave = form.destino && form.partida && (form.semData || form.dataIda);
+  const canSave = form.destino && form.partida && form.regiao && (form.semData || form.dataIda);
 
   return (
     <div className="mk-modal-backdrop" onClick={onClose}>
@@ -1997,7 +2222,18 @@ function TripFormModal({ initial, onClose, onSave }) {
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
-        <div className="mk-form-row"><label>Milhas necessárias</label><input type="number" min="0" step="1" value={form.milhasNecessarias} onChange={(e) => set("milhasNecessarias", e.target.value)} placeholder="Ex.: 80000" /></div>
+        <div className="mk-form-row"><label>Região do destino (para estimar as milhas)</label>
+          <select value={form.regiao} onChange={(e) => set("regiao", e.target.value)}>
+            <option value="">Selecione…</option>
+            {MILHAS_REGIOES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </div>
+        <div className="mk-form-row"><label>Tipo de viagem</label>
+          <select value={form.tipoViagem} onChange={(e) => set("tipoViagem", e.target.value)}>
+            <option value="idaVolta">Ida e volta</option>
+            <option value="somenteIda">Somente ida</option>
+          </select>
+        </div>
         <div className="mk-form-row"><label>Observação</label><textarea rows="3" value={form.observacao} onChange={(e) => set("observacao", e.target.value)} placeholder="Comentários, preferências de horário, etc." /></div>
         <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!canSave} onClick={() => onSave({ ...form, dataIda: form.semData ? "" : form.dataIda, dataVolta: form.semData ? "" : form.dataVolta, flexibilidade: form.semData ? "0" : form.flexibilidade })}>{initial ? "Salvar alterações" : "Salvar viagem"}</button>
       </div>
@@ -2287,7 +2523,7 @@ function AdminAggregateDashboard({ clients }) {
         }, 0);
         const economia = economiaEmissoes + economiaHoteis;
 
-        (d.proximasViagens || []).forEach((v) => viagens.push({ ...v, userId: row.user_id, cliente: nomeCliente }));
+        (d.proximasViagens || []).filter((v) => !viagemVencida(v, hojeLocalIso())).forEach((v) => viagens.push({ ...v, userId: row.user_id, cliente: nomeCliente }));
         ems.forEach((e) => {
           if (!e.dataIda) return;
           const ida = new Date(`${e.dataIda}T00:00:00`);
