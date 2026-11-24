@@ -255,24 +255,29 @@ function initialsForPrograma(nome) {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
 }
-// Logos oficiais extraídas (fundo branco). Marcas sem arquivo aqui caem no selo de iniciais.
+// Logos em /public/logos. Cada programa tenta vários nomes/extensões; se nenhum carregar, mostra as iniciais.
 const PROGRAM_LOGO_FILES = {
-  azul: "azul.png", smiles: "smiles.png", latam: "latam.png", "latam pass": "latam.png",
-  iberia: "iberia.png", ibéria: "iberia.png", tap: "tap.png", united: "united.png",
-  accor: "accor.png", all: "accor.png", livelo: "livelo.png", esfera: "esfera.png",
-  curtai: "curtai.png", curtaí: "curtai.png", coopera: "coopera.png",
+  azul: ["azul.png", "azul.jpg"], smiles: ["smiles.png", "smiles.jpg"],
+  latam: ["latam.png", "latam.jpg"], iberia: ["iberia.png", "iberia.jpg"], ibéria: ["iberia.png", "iberia.jpg"],
+  tap: ["tap.png", "tap.jpg"], united: ["united.png", "United.jpg", "united.jpg", "United.png"],
+  accor: ["accor.png", "accor.jpg"], livelo: ["livelo.png", "livelo.jpg"], esfera: ["esfera.png", "esfera.jpg"],
+  curtai: ["curtai.png", "curtai.jpg"], curtaí: ["curtai.png", "curtai.jpg"], coopera: ["coopera.png", "coopera.jpg"],
+  atomos: ["atomos.png", "atomos.jpg"], átomos: ["atomos.png", "atomos.jpg"], loop: ["loop.png", "loop.jpg"],
 };
-function logoFileForPrograma(nome) {
+function logoFilesForPrograma(nome) {
   const key = (nome || "").toLowerCase();
+  if (/^all\b/.test(key)) return PROGRAM_LOGO_FILES.accor;
   for (const k in PROGRAM_LOGO_FILES) if (key.includes(k)) return PROGRAM_LOGO_FILES[k];
   return null;
 }
-// Selo redondo com fundo branco — logo oficial quando disponível, senão iniciais na cor da marca.
-function ProgramLogo({ nome, size = 34 }) {
-  const logoFile = logoFileForPrograma(nome);
+// Selo redondo com fundo branco. ring = contorno azul neon escuro (usado nos cards grandes).
+function ProgramLogo({ nome, size = 34, ring = false }) {
+  const files = logoFilesForPrograma(nome);
+  const [idx, setIdx] = useState(0);
+  const file = files && idx < files.length ? files[idx] : null;
   return (
-    <span className="mk-program-logo" style={{ width: size, height: size, fontSize: size * 0.38, color: colorForPrograma(nome) }} title={nome}>
-      {logoFile ? <img src={`/logos/${logoFile}`} alt={nome} style={{ width: "76%", height: "76%", objectFit: "contain" }} /> : initialsForPrograma(nome)}
+    <span className={`mk-program-logo${ring ? " mk-program-logo-ring" : ""}`} style={{ width: size, height: size, fontSize: size * 0.38, color: colorForPrograma(nome) }} title={nome}>
+      {file ? <img src={`/logos/${file}`} alt={nome} onError={() => setIdx((i) => i + 1)} style={{ width: ring ? "78%" : "76%", height: ring ? "50%" : "76%", objectFit: "contain" }} /> : initialsForPrograma(nome)}
     </span>
   );
 }
@@ -513,6 +518,9 @@ const APP_CSS = `
   .mk-programa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .mk-programa-name { font-weight: 700; font-size: 14px; }
   .mk-programa-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .mk-program-logo-ring { border: 2px solid #1F4FD6; box-shadow: 0 0 0 3px rgba(31,79,214,0.18), 0 0 18px rgba(31,79,214,0.65), inset 0 0 8px rgba(31,79,214,0.25) !important; }
+  .mk-programa-card.mk-programa-center { text-align: center; }
+  .mk-programa-card.mk-programa-center .mk-program-logo { margin: 4px auto 12px; }
   .mk-program-logo { background: #fff; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.35); letter-spacing: 0.5px; }
 
   /* ---------- Cartões de Crédito (foto + benefícios) ---------- */
@@ -1338,17 +1346,15 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
               ) : (
                 <div className="mk-programa-grid" style={{ marginBottom: 22 }}>
                   {porProgramaCards.map((p) => (
-                    <div className="mk-programa-card" key={p.programa}>
-                      <div className="mk-programa-head">
-                        <span className="mk-programa-name">{p.programa}</span>
-                        <ProgramLogo nome={p.programa} size={32} />
-                      </div>
+                    <div className="mk-programa-card mk-programa-center" key={p.programa}>
+                      <ProgramLogo nome={p.programa} size={96} ring />
+                      <div className="mk-programa-name" style={{ marginBottom: 12 }}>{p.programa}</div>
                       <div className="mk-field">Saldo Atual</div>
                       <div className="mk-mono" style={{ fontSize: 20, fontWeight: 700 }}>{p.saldo.toLocaleString("pt-BR")}</div>
                       <div className="mk-field" style={{ marginTop: 10 }}>Custo Médio por Milheiro</div>
                       <div className="mk-mono" style={{ fontWeight: 700 }}>{formatBRL(p.cpmAvg)}</div>
                       {p.donoBreakdown.length > 1 && (
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(234,241,255,0.1)" }}>
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(234,241,255,0.1)", textAlign: "left" }}>
                           {p.donoBreakdown.map(([dono, saldo]) => (
                             <div key={dono} className="mk-field" style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
                               <span>{dono}</span>
