@@ -2812,29 +2812,69 @@ function AdminShell({ adminEmail, onSignOut }) {
 }
 
 // ---------- Login (e-mail ou CPF) ----------
-function LoginScreen() {
+function LoginScreen({ recovery = false, onRecoveryDone }) {
+  const [mode, setMode] = useState(recovery ? "newpass" : "login"); // login | forgot | newpass
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [msg, setMsg] = useState("");
+  const [msgOk, setMsgOk] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setLoading(true); setMsg("");
+  useEffect(() => { if (recovery) { setMode("newpass"); setMsg(""); } }, [recovery]);
+
+  const resolveEmail = async () => {
     let email = login.trim();
     if (!email.includes("@")) {
       const { data: resolvedEmail, error: lookupErr } = await supabase.rpc("email_for_cpf", { cpf_input: onlyDigits(login) });
-      if (lookupErr || !resolvedEmail) {
-        setLoading(false);
-        setMsg("CPF não encontrado. Confira com o administrador.");
-        return;
-      }
+      if (lookupErr || !resolvedEmail) return null;
       email = resolvedEmail;
     }
+    return email;
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true); setMsg(""); setMsgOk(false);
+
+    if (mode === "newpass") {
+      if (password.length < 6) { setLoading(false); setMsg("A senha deve ter pelo menos 6 caracteres."); return; }
+      if (password !== password2) { setLoading(false); setMsg("As senhas não coincidem."); return; }
+      const { error } = await supabase.auth.updateUser({ password });
+      setLoading(false);
+      if (error) { setMsg(`Não foi possível salvar a nova senha: ${error.message}`); return; }
+      try { window.history.replaceState(null, "", window.location.pathname); } catch (_) {}
+      onRecoveryDone?.();
+      return;
+    }
+
+    const email = await resolveEmail();
+    if (!email) {
+      setLoading(false);
+      setMsg("CPF não encontrado. Confira com o administrador.");
+      return;
+    }
+
+    if (mode === "forgot") {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      setLoading(false);
+      if (error) { setMsg(`Não foi possível enviar o e-mail: ${error.message}`); return; }
+      setMsgOk(true);
+      setMsg("Pronto! Enviamos um link para redefinir a senha no e-mail cadastrado. Confira também a caixa de spam.");
+      return;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setMsg("E-mail/CPF ou senha incorretos.");
+    if (error) {
+      const m = (error.message || "").toLowerCase();
+      if (m.includes("invalid login credentials")) setMsg("E-mail/CPF ou senha incorretos.");
+      else if (m.includes("email not confirmed")) setMsg("E-mail ainda não confirmado. Peça ao administrador para confirmar seu acesso.");
+      else setMsg(`Não foi possível entrar: ${error.message}`);
+    }
   };
+
+  const goMode = (m) => { setMode(m); setMsg(""); setMsgOk(false); setPassword(""); setPassword2(""); };
 
   return (
     <div className="mk-login-wrap">
@@ -2849,6 +2889,7 @@ function LoginScreen() {
         .mk-login-card input { width: 100%; border: 1px solid rgba(234,241,255,0.18); border-radius: 8px; padding: 10px 12px; font-size: 14px; background: rgba(234,241,255,0.08); color: var(--ink); margin-bottom: 12px; font-family: 'Space Grotesk', sans-serif; }
         .mk-login-card button[type=submit] { width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #06122B; border: none; padding: 11px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
         .mk-login-card .msg { margin-top: 12px; font-size: 12.5px; color: var(--accent-2); }
+        .mk-login-card .mk-login-link { display: block; background: none; border: none; color: var(--accent-2); font-size: 12.5px; margin-top: 14px; padding: 0; cursor: pointer; font-family: 'Space Grotesk', sans-serif; text-decoration: underline; text-underline-offset: 3px; }
         .mk-login-card .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
         .mk-login-card .brand img { width: 42px; height: 42px; border-radius: 12px; box-shadow: 0 0 0 1px rgba(94,208,255,0.3), 0 8px 18px rgba(46,111,242,0.4); flex-shrink: 0; }
         .mk-login-card .brand .sub { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent-2); }
@@ -2868,13 +2909,35 @@ function LoginScreen() {
             <h1>Viaja que rola</h1>
           </div>
         </div>
-        <p>Entre com seu e-mail ou CPF cadastrado pelo administrador.</p>
+        <p>
+          {mode === "login" && "Entre com seu e-mail ou CPF cadastrado pelo administrador."}
+          {mode === "forgot" && "Informe seu e-mail ou CPF e enviaremos um link para criar uma nova senha."}
+          {mode === "newpass" && "Defina sua nova senha de acesso."}
+        </p>
         <form onSubmit={submit}>
-          <input type="text" placeholder="E-mail ou CPF" value={login} onChange={(e) => setLogin(e.target.value)} required />
-          <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-          <button type="submit" disabled={loading}>{loading ? "Aguarde..." : "Entrar"}</button>
+          {mode !== "newpass" && (
+            <input type="text" placeholder="E-mail ou CPF" value={login} onChange={(e) => setLogin(e.target.value)} required />
+          )}
+          {mode === "login" && (
+            <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          )}
+          {mode === "newpass" && (
+            <>
+              <input type="password" placeholder="Nova senha (mín. 6 caracteres)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+              <input type="password" placeholder="Repita a nova senha" value={password2} onChange={(e) => setPassword2(e.target.value)} required minLength={6} />
+            </>
+          )}
+          <button type="submit" disabled={loading}>
+            {loading ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "forgot" ? "Enviar link de redefinição" : "Salvar nova senha"}
+          </button>
         </form>
-        {msg && <div className="msg">{msg}</div>}
+        {mode === "login" && (
+          <button type="button" className="mk-login-link" onClick={() => goMode("forgot")}>Esqueci minha senha</button>
+        )}
+        {mode === "forgot" && (
+          <button type="button" className="mk-login-link" onClick={() => goMode("login")}>← Voltar para o login</button>
+        )}
+        {msg && <div className="msg" style={msgOk ? { color: "#6EE7A8" } : undefined}>{msg}</div>}
       </div>
     </div>
   );
@@ -2883,10 +2946,16 @@ function LoginScreen() {
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [recovery, setRecovery] = useState(
+    typeof window !== "undefined" && /type=recovery/.test(window.location.hash || "")
+  );
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+      setSession(s);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -2900,7 +2969,7 @@ export default function App() {
   if (session === undefined) {
     return <div style={{ background: "#050912", minHeight: "100vh", color: "#8CA2C9", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>Carregando…</div>;
   }
-  if (!session) return <LoginScreen />;
+  if (!session || recovery) return <LoginScreen recovery={recovery && !!session} onRecoveryDone={() => setRecovery(false)} />;
 
   if (isAdmin) {
     return <AdminShell adminEmail={session.user.email} onSignOut={() => supabase.auth.signOut()} />;
