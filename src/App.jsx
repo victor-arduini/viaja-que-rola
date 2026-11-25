@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "./supabaseClient";
 import SignatureCanvas from "react-signature-canvas";
 import { jsPDF } from "jspdf";
@@ -452,10 +453,90 @@ const MODULES = [
   ]},
 ];
 
+// ---------- Calendário (seletor de data próprio, todos os textos em branco) ----------
+const CAL_MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const CAL_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
+const isoDeData = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function DatePickerPopup({ value, onPick, onClose }) {
+  const base = value ? new Date(`${value}T00:00:00`) : new Date();
+  const [ano, setAno] = useState(base.getFullYear());
+  const [mes, setMes] = useState(base.getMonth());
+  const hojeIso = isoDeData(new Date());
+  const anoAtual = new Date().getFullYear();
+  const anos = [];
+  for (let a = anoAtual - 100; a <= anoAtual + 15; a++) anos.push(a);
+  if (!anos.includes(ano)) anos.push(ano);
+  anos.sort((x, y) => x - y);
+
+  const mover = (delta) => {
+    let m = mes + delta, a = ano;
+    if (m < 0) { m = 11; a -= 1; } else if (m > 11) { m = 0; a += 1; }
+    setMes(m); setAno(a);
+  };
+  const primeiro = new Date(ano, mes, 1).getDay();
+  const dias = new Date(ano, mes + 1, 0).getDate();
+  const celulas = [];
+  for (let i = 0; i < primeiro; i++) celulas.push(null);
+  for (let d = 1; d <= dias; d++) celulas.push(d);
+  const atalho = (n, meses) => {
+    const d = new Date();
+    if (meses) d.setMonth(d.getMonth() + meses); else d.setDate(d.getDate() + n);
+    onPick(isoDeData(d));
+  };
+
+  return createPortal(
+    <div className="mkcal-backdrop">
+      <div className="mkcal">
+        <div className="mkcal-top">
+          <span>{value ? formatDate(value) : "Selecione a data"}</span>
+          <button type="button" className="mkcal-x" onClick={onClose} aria-label="Fechar"><X size={18} /></button>
+        </div>
+        <div className="mkcal-hd">
+          <button type="button" className="mkcal-nav" onClick={() => mover(-1)} aria-label="Mês anterior">‹</button>
+          <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>{CAL_MESES.map((m, i) => <option key={m} value={i}>{m}</option>)}</select>
+          <select value={ano} onChange={(e) => setAno(Number(e.target.value))}>{anos.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+          <button type="button" className="mkcal-nav" onClick={() => mover(1)} aria-label="Próximo mês">›</button>
+        </div>
+        <div className="mkcal-grid mkcal-wk">{CAL_SEMANA.map((d, i) => <span key={i}>{d}</span>)}</div>
+        <div className="mkcal-grid">
+          {celulas.map((d, i) => {
+            if (!d) return <span key={i} />;
+            const iso = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            return <button type="button" key={i} className={`mkcal-day${iso === value ? " sel" : ""}${iso === hojeIso ? " today" : ""}`} onClick={() => onPick(iso)}>{d}</button>;
+          })}
+        </div>
+        <div className="mkcal-qk">
+          <button type="button" onClick={() => onPick(hojeIso)}>Hoje</button>
+          <button type="button" onClick={() => atalho(7)}>+7 dias</button>
+          <button type="button" onClick={() => atalho(30)}>+30 dias</button>
+          <button type="button" onClick={() => atalho(0, 3)}>+3 meses</button>
+          {value ? <button type="button" onClick={() => onPick("")}>Limpar</button> : null}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function DateField({ value, onChange, placeholder = "Selecione a data" }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <>
+      <button type="button" className="mk-datefield" onClick={() => setAberto(true)}>
+        <CalendarCheck size={15} />
+        <span>{value ? formatDate(value) : placeholder}</span>
+      </button>
+      {aberto && <DatePickerPopup value={value} onClose={() => setAberto(false)} onPick={(v) => { onChange(v); setAberto(false); }} />}
+    </>
+  );
+}
+
 // ---------- Estimativa de milhas por destino (tabela de referência +50%) ----------
 const FATOR_ESTIMATIVA = 1.5;
 const MILHAS_REGIOES = [
-  { key: "nacional", label: "Brasil (Nacional)" },
+  { key: "brasil1", label: "Brasil 1" },
+  { key: "brasil2", label: "Brasil 2" },
   { key: "americaSul", label: "América do Sul" },
   { key: "americaNorte", label: "América do Norte" },
   { key: "europa", label: "Europa" },
@@ -469,17 +550,20 @@ const MILHAS_CIAS = [
 ];
 // [média, mínimo, máximo] por trecho, valores originais da tabela (antes do acréscimo de 50%)
 const MILHAS_TABELA_BASE = {
-  nacional:    { latam: [7500, 3000, 12000],   smiles: [12000, 6000, 18000],   azul: [10000, 5000, 15000] },
+  brasil1:     { latam: [7500, 3000, 12000],   smiles: [12000, 6000, 18000],   azul: [10000, 5000, 15000] },
   americaSul:  { latam: [15000, 10000, 20000], smiles: [22000, 14000, 30000],  azul: [18000, 10000, 25000] },
   americaNorte:{ latam: [55000, 35000, 68400], smiles: [65000, 50000, 80000],  azul: [55000, 35000, 75000] },
   europa:      { latam: [75000, 45000, 96800], smiles: [85000, 60000, 110000], azul: [70000, 45000, 95000] },
   africa:      { latam: [65000, 45000, 75000], smiles: [75000, 55000, 95000],  azul: [75000, 50000, 100000] },
   asia:        { latam: [110000, 85000, 135000], smiles: [140000, 110000, 170000], azul: [125000, 95000, 155000] },
 };
+const FATOR_BRASIL2 = 1.5;
 function milhasPorTrecho(regiao, cia) {
-  const t = MILHAS_TABELA_BASE[regiao]?.[cia];
+  const reg = regiao === "nacional" ? "brasil1" : regiao;
+  const t = MILHAS_TABELA_BASE[reg === "brasil2" ? "brasil1" : reg]?.[cia];
   if (!t) return null;
-  return { media: Math.round(t[0] * FATOR_ESTIMATIVA), min: Math.round(t[1] * FATOR_ESTIMATIVA), max: Math.round(t[2] * FATOR_ESTIMATIVA) };
+  const f = FATOR_ESTIMATIVA * (reg === "brasil2" ? FATOR_BRASIL2 : 1);
+  return { media: Math.round(t[0] * f), min: Math.round(t[1] * f), max: Math.round(t[2] * f) };
 }
 function trechosDaViagem(v) { return v?.tipoViagem === "somenteIda" ? 1 : 2; }
 // Total de milhas do planejamento de uma viagem para uma cia (trechos x passageiros).
@@ -623,6 +707,25 @@ const APP_CSS = `
   .mk-programa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .mk-programa-name { font-weight: 700; font-size: 14px; }
   .mk-programa-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .mk-datefield { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 9px 10px; font-size: 13.5px; font-family: 'Space Grotesk', sans-serif; background: rgba(234,241,255,0.06); color: #fff; cursor: pointer; }
+  .mk-datefield:hover { border-color: #5ED0FF; }
+  .mkcal-backdrop { position: fixed; inset: 0; background: rgba(5,9,18,0.75); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px; font-family: 'Space Grotesk', sans-serif; }
+  .mkcal { background: #0F2049; border: 1px solid rgba(94,208,255,0.3); border-radius: 14px; padding: 14px; width: 100%; max-width: 330px; color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
+  .mkcal-top { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(90deg, #1F4FD6, #2E6FF2); color: #fff; border-radius: 9px; padding: 10px 12px; margin-bottom: 12px; font-weight: 700; font-size: 15px; }
+  .mkcal-x { background: none; border: none; color: #fff; cursor: pointer; display: inline-flex; padding: 2px; }
+  .mkcal-hd { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .mkcal-hd select { flex: 1; min-width: 0; background: rgba(234,241,255,0.08); color: #fff; border: 1px solid rgba(234,241,255,0.18); border-radius: 7px; padding: 6px 6px; font-size: 13px; font-family: 'Space Grotesk', sans-serif; }
+  .mkcal-hd select option { background: #0F2049; color: #fff; }
+  .mkcal-nav { background: none; border: none; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; padding: 0 8px; }
+  .mkcal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+  .mkcal-wk span { color: #fff; font-size: 11px; font-weight: 700; padding: 4px 0; }
+  .mkcal-day { background: none; border: 1px solid transparent; color: #fff; height: 34px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
+  .mkcal-day:hover { background: rgba(94,208,255,0.22); }
+  .mkcal-day.today { border-color: #5ED0FF; }
+  .mkcal-day.sel { background: #2E6FF2; color: #fff; font-weight: 700; box-shadow: 0 0 10px rgba(94,208,255,0.6); }
+  .mkcal-qk { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .mkcal-qk button { background: rgba(234,241,255,0.08); border: 1px solid rgba(94,208,255,0.3); color: #fff; border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; }
+  .mkcal-qk button:hover { background: rgba(94,208,255,0.2); }
   .mk-foco-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
   .mk-foco-chip { display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; border: 1px solid rgba(94,208,255,0.25); background: rgba(234,241,255,0.04); color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; }
   .mk-foco-chip:hover { border-color: rgba(94,208,255,0.6); }
@@ -776,7 +879,7 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
   const requiredOk = requiredTextFields.length === 0 || requiredTextFields.every((f) => !!form[f.key]);
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar" : "Nova"} entrada — {schema.label} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         {schema.fields.map((f) => (
@@ -799,7 +902,7 @@ function GenericFormModal({ schema, initial, allData, onClose, onSave }) {
                 {(allData.dependentes || []).map((dep) => <option key={dep.id} value={dep.id}>{dep.nome}</option>)}
               </select>
             )}
-            {f.type === "date" && <input type="date" value={form[f.key]} onChange={(e) => set(f.key, e.target.value)} />}
+            {f.type === "date" && <DateField value={form[f.key]} onChange={(v) => set(f.key, v)} />}
             {(f.type === "number" || f.type === "currency") && (
               <input type="number" step={f.type === "currency" ? "0.01" : "1"} value={form[f.key]} onChange={(e) => set(f.key, e.target.value)} />
             )}
@@ -851,18 +954,13 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [showContratoLembrete, setShowContratoLembrete] = useState(false);
 
+  const lembreteContratoMostrado = useRef(false);
   useEffect(() => {
     if (!profile || impersonating || profile.contrato_assinatura) return;
-    const cadastro = profile.created_at ? new Date(profile.created_at) : null;
-    if (!cadastro) return;
-    const diasDesdeCadastro = Math.floor((Date.now() - cadastro.getTime()) / 86400000);
-    if (diasDesdeCadastro < 1) return;
-    const hojeStr = new Date().toISOString().slice(0, 10);
-    const chave = `contratoLembrete_${userId}_${hojeStr}`;
-    if (localStorage.getItem(chave)) return;
-    localStorage.setItem(chave, "1");
+    if (lembreteContratoMostrado.current) return;
+    lembreteContratoMostrado.current = true;
     setShowContratoLembrete(true);
-  }, [profile, impersonating, userId]);
+  }, [profile, impersonating]);
 
   useEffect(() => {
     (async () => {
@@ -1564,7 +1662,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                   </tbody>
                 </table>
               </div>
-              <div className="mk-field" style={{ marginBottom: 22 }}>Valores estimados por trecho, já com acréscimo de 50% de margem de segurança sobre a média, o mínimo e o máximo. Azul é em pontos.</div>
+              <div className="mk-field" style={{ marginBottom: 22 }}>Valores estimados por trecho. Azul é em pontos.</div>
 
               <div className="mk-section-title"><h2 style={{ fontSize: 15 }}>Seu planejamento de viagens</h2></div>
               {viagensFuturas.length === 0 ? (
@@ -1577,7 +1675,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                       {viagensFuturas.map((v) => (
                         <tr key={v.id}>
                           <td><b>{v.destino}</b><span className="mk-faixa">{v.semData ? "Sem data definida" : formatDate(v.dataIda || v.data)}</span></td>
-                          <td>{MILHAS_REGIOES.find((r) => r.key === v.regiao)?.label || <i style={{ color: "#FFB020" }}>Defina a região</i>}</td>
+                          <td>{MILHAS_REGIOES.find((r) => r.key === (v.regiao === "nacional" ? "brasil1" : v.regiao))?.label || <i style={{ color: "#FFB020" }}>Defina a região</i>}</td>
                           <td>{trechosDaViagem(v)} ({v.tipoViagem === "somenteIda" ? "só ida" : "ida e volta"})</td>
                           <td>{Number(v.passageiros || 1)}</td>
                           {MILHAS_CIAS.map((c) => {
@@ -1756,7 +1854,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
                         <div className="mk-field" style={{ marginTop: 5 }}>
                           {v.semData ? <b>Sem data definida</b> : <>Ida: <b>{formatDate(v.dataIda || v.data)}</b> · Volta: <b>{formatDate(v.dataVolta)}</b>{Number(v.flexibilidade) > 0 ? ` · Flexibilidade +${v.flexibilidade} dias` : ""}</>}
                         </div>
-                        <div className="mk-field" style={{ marginTop: 5 }}>{MILHAS_REGIOES.find((r) => r.key === v.regiao)?.label || "Região não definida"} · {v.tipoViagem === "somenteIda" ? "Só ida" : "Ida e volta"}</div>
+                        <div className="mk-field" style={{ marginTop: 5 }}>{MILHAS_REGIOES.find((r) => r.key === (v.regiao === "nacional" ? "brasil1" : v.regiao))?.label || "Região não definida"} · {v.tipoViagem === "somenteIda" ? "Só ida" : "Ida e volta"}</div>
                         {ciasFoco.map((c) => { const m = milhasDaViagem(v, c.key); return m ? <div className="mk-field" key={c.key} style={{ marginTop: 5 }}>Milhas necessárias ({c.label}): <b>{m.media.toLocaleString("pt-BR")}</b></div> : null; })}
                         {v.observacao && <div className="mk-field" style={{ marginTop: 5 }}>Obs: {v.observacao}</div>}
                       </div>
@@ -1956,14 +2054,14 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       {showCompraBonificadaForm && <CompraBonificadaFormModal initial={editingCompraBonificada} accounts={accounts} dependentes={dependentes} onClose={() => { setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} onSave={(d) => { editingCompraBonificada ? updateCompraBonificada(editingCompraBonificada.id, d) : addCompraBonificada(d); setShowCompraBonificadaForm(false); setEditingCompraBonificada(null); }} />}
       {showCompraDePontosForm && <CompraDePontosFormModal initial={editingCompraDePontos} accounts={accounts} dependentes={dependentes} onClose={() => { setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} onSave={(d) => { editingCompraDePontos ? updateCompraDePontos(editingCompraDePontos.id, d) : addCompraDePontos(d); setShowCompraDePontosForm(false); setEditingCompraDePontos(null); }} />}
       {showContratoLembrete && (
-        <div className="mk-modal-backdrop" onClick={() => setShowContratoLembrete(false)}>
+        <div className="mk-modal-backdrop">
           <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Contrato pendente <button className="mk-iconbtn" onClick={() => setShowContratoLembrete(false)}><X size={18} /></button></h3>
             <p className="mk-field" style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.6 }}>
-              Notamos que você ainda não assinou o contrato de prestação de serviços. Assine digitalmente na aba "Contrato" para regularizar seu cadastro.
+              Você ainda não assinou o contrato de prestação de serviços. Assine digitalmente na aba "Contrato" para regularizar seu cadastro. Este aviso aparece a cada acesso até a assinatura.
             </p>
             <div className="mk-form-cols" style={{ marginTop: 14 }}>
-              <button className="mk-iconbtn-wide" onClick={() => setShowContratoLembrete(false)}>Lembrar depois</button>
+              <button className="mk-iconbtn-wide" onClick={() => setShowContratoLembrete(false)}>Fechar</button>
               <button className="mk-btn" style={{ justifyContent: "center" }} onClick={() => { setTab("contrato"); setShowContratoLembrete(false); }}>Assinar agora</button>
             </div>
           </div>
@@ -2034,13 +2132,13 @@ function DependenteFormModal({ initial, onClose, onSave }) {
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar dependente" : "Novo dependente"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Nome</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Nome completo" /></div>
         <div className="mk-form-row"><label>Grau de parentesco</label><input value={form.parentesco} onChange={(e) => set("parentesco", e.target.value)} placeholder="Ex.: Cônjuge, Filho(a), Mãe..." /></div>
         <div className="mk-form-cols">
-          <div className="mk-form-row"><label>Data de nascimento</label><input type="date" value={form.dataNascimento} onChange={(e) => set("dataNascimento", e.target.value)} /></div>
+          <div className="mk-form-row"><label>Data de nascimento</label><DateField value={form.dataNascimento} onChange={(v) => set("dataNascimento", v)} /></div>
           <div className="mk-form-row"><label>CPF</label><input value={form.cpf} onChange={(e) => set("cpf", formatCpfInput(e.target.value))} placeholder="000.000.000-00" /></div>
         </div>
         <div className="mk-form-row"><label>Telefone</label><input value={form.telefone} onChange={(e) => set("telefone", formatTelefoneInput(e.target.value))} placeholder="(00) 00000-0000" /></div>
@@ -2086,7 +2184,7 @@ function CartaoCreditoFormModal({ initial, accounts, dependentes, userId, onClos
     }
   };
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar cartão" : "Novo cartão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Nome / apelido do cartão</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} placeholder="Ex.: Itaú Click, Nubank Ultravioleta..." /></div>
@@ -2146,7 +2244,7 @@ function AccountFormModal({ initial, dependentes, onClose, onSave }) {
   const isOutro = form.marca === "Outro";
   const programaFinal = isOutro ? form.outroTexto.trim() : form.marca;
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar programa" : "Novo programa"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Tipo</label>
@@ -2169,7 +2267,7 @@ function AccountFormModal({ initial, dependentes, onClose, onSave }) {
           <div className="mk-form-row"><label>Saldo</label><input type="number" value={form.saldo} onChange={(e) => set("saldo", e.target.value)} placeholder="50000" /></div>
           <div className="mk-form-row"><label>Custo/Milheiro (R$)</label><input type="number" step="0.01" value={form.cpm} onChange={(e) => set("cpm", e.target.value)} placeholder="18.50" /></div>
         </div>
-        <div className="mk-form-row"><label>Validade</label><input type="date" value={form.validade} onChange={(e) => set("validade", e.target.value)} /></div>
+        <div className="mk-form-row"><label>Validade</label><DateField value={form.validade} onChange={(v) => set("validade", v)} /></div>
         <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} disabled={!form.titular || !form.saldo || (isOutro && !form.outroTexto.trim())} onClick={() => onSave({ tipo: form.tipo, programa: programaFinal, titular: form.titular, titularId: form.titularId, saldo: form.saldo, cpm: form.cpm, validade: form.validade })}>{initial ? "Salvar alterações" : "Salvar programa"}</button>
       </div>
     </div>
@@ -2194,7 +2292,7 @@ function TripFormModal({ initial, onClose, onSave }) {
   const canSave = form.destino && form.partida && form.regiao && (form.semData || form.dataIda);
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar Viagem" : "Nova Viagem"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Destino - Aeroporto</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: Lisboa (LIS)" /></div>
@@ -2203,8 +2301,8 @@ function TripFormModal({ initial, onClose, onSave }) {
         {!form.semData && (
           <>
             <div className="mk-form-cols">
-              <div className="mk-form-row"><label>Data da Ida</label><input type="date" value={form.dataIda} onChange={(e) => set("dataIda", e.target.value)} /></div>
-              <div className="mk-form-row"><label>Data da Volta</label><input type="date" value={form.dataVolta} onChange={(e) => set("dataVolta", e.target.value)} /></div>
+              <div className="mk-form-row"><label>Data da Ida</label><DateField value={form.dataIda} onChange={(v) => set("dataIda", v)} /></div>
+              <div className="mk-form-row"><label>Data da Volta</label><DateField value={form.dataVolta} onChange={(v) => set("dataVolta", v)} /></div>
             </div>
             <div className="mk-form-row"><label>Flexibilidade</label>
               <select value={form.flexibilidade} onChange={(e) => set("flexibilidade", e.target.value)}>
@@ -2292,15 +2390,15 @@ function EmissionFormModal({ initial, accounts, dependentes, userId, onClose, on
   const saldoInsuficiente = form.origemMilhas === "saldo" && conta && Number(form.milhas || 0) > saldoDisponivel;
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(ev) => ev.stopPropagation()}>
         <h3>{initial ? "Editar emissão" : "Nova emissão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Origem das milhas</label><select value={form.origemMilhas} onChange={(e) => set("origemMilhas", e.target.value)}><option value="resgate">Resgate Anterior</option><option value="saldo">Saldo em Conta</option></select></div>
         <div className="mk-form-row"><label>Programa</label><select value={form.accountId} onChange={(e) => set("accountId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
         <div className="mk-form-row"><label>Passageiros</label><select value={form.passageiros} onChange={(e) => set("passageiros", e.target.value)}>{Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
-        <div className="mk-form-row"><label>Data do Resgate</label><input type="date" value={form.dataResgate} onChange={(e) => set("dataResgate", e.target.value)} /></div>
+        <div className="mk-form-row"><label>Data do Resgate</label><DateField value={form.dataResgate} onChange={(v) => set("dataResgate", v)} /></div>
         <div className="mk-form-row"><label>Embarque-Destino</label><input value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Ex.: CNF → LIS" /></div>
-        <div className="mk-form-cols"><div className="mk-form-row"><label>Data da Ida</label><input type="date" value={form.dataIda} onChange={(e) => set("dataIda", e.target.value)} /></div><div className="mk-form-row"><label>Data da Volta</label><input type="date" value={form.dataVolta} onChange={(e) => set("dataVolta", e.target.value)} /></div></div>
+        <div className="mk-form-cols"><div className="mk-form-row"><label>Data da Ida</label><DateField value={form.dataIda} onChange={(v) => set("dataIda", v)} /></div><div className="mk-form-row"><label>Data da Volta</label><DateField value={form.dataVolta} onChange={(v) => set("dataVolta", v)} /></div></div>
         <div className="mk-form-cols"><div className="mk-form-row"><label>Milhas usadas</label><input type="number" value={form.milhas} onChange={(e) => set("milhas", e.target.value)} placeholder="80000" /></div><div className="mk-form-row"><label>Taxas pagas (R$)</label><input type="number" step="0.01" value={form.taxas} onChange={(e) => set("taxas", e.target.value)} placeholder="350" /></div></div>
         <div className="mk-form-row"><label>Valor de mercado total (R$)</label><input type="number" step="0.01" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="6200" /></div>
         <div className="mk-form-row">
@@ -2344,7 +2442,7 @@ function HotelReservationFormModal({ initial, accounts, dependentes, onClose, on
   const saldoInsuficiente = !isResgateAnterior && conta && Number(form.pontosMilhas || 0) > saldoDisponivel;
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Reserva de Hotel" : "Nova Reserva de Hotel"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Hotel</label><textarea rows="3" value={form.hotel} onChange={(e) => set("hotel", e.target.value)} placeholder="Descrição / comentário da reserva" /></div>
@@ -2370,7 +2468,7 @@ function CreditCardFormModal({ initial, accounts, dependentes, onClose, onSave }
   const eligibleAccounts = accounts.filter((a) => inferTipo(a) !== "Hotel");
   const [form, setForm] = useState({ programaId: initial?.programaId || eligibleAccounts[0]?.id || "", pontosPorReal: initial?.pontosPorReal ?? "", faturaMes: initial?.faturaMes ?? "", pontosAcumulados: initial?.pontosAcumulados ?? "" });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  return <div className="mk-modal-backdrop" onClick={onClose}><div className="mk-modal" onClick={(e) => e.stopPropagation()}><h3>{initial ? "Editar Crédito de Cartão" : "Novo Crédito de Cartão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
+  return <div className="mk-modal-backdrop"><div className="mk-modal" onClick={(e) => e.stopPropagation()}><h3>{initial ? "Editar Crédito de Cartão" : "Novo Crédito de Cartão"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
     <div className="mk-form-row"><label>Programa ou Co-Branded</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{eligibleAccounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — {inferTipo(a)} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
     <div className="mk-form-row"><label>Pontos por R$</label><input type="number" step="0.01" value={form.pontosPorReal} onChange={(e) => set("pontosPorReal", e.target.value)} /></div>
     <div className="mk-form-row"><label>Fatura do mês (R$)</label><input type="number" step="0.01" value={form.faturaMes} onChange={(e) => set("faturaMes", e.target.value)} /></div>
@@ -2394,7 +2492,7 @@ function TransferFormModal({ initial, accounts, dependentes, onClose, onSave }) 
   const saldoInsuficiente = origem && Number(form.pontos || 0) > saldoDisponivel;
   const pontosCreditados = Math.round(Number(form.pontos || 0) * (1 + Number(form.bonusPct || 0) / 100));
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Transferência" : "Nova Transferência"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Origem</label><select value={form.origemId} onChange={(e) => set("origemId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
@@ -2403,7 +2501,7 @@ function TransferFormModal({ initial, accounts, dependentes, onClose, onSave }) 
           <div className="mk-form-row"><label>Pontos transferidos</label><input type="number" value={form.pontos} onChange={(e) => set("pontos", e.target.value)} placeholder="19000" /></div>
           <div className="mk-form-row"><label>Bônus (%)</label><input type="number" value={form.bonusPct} onChange={(e) => set("bonusPct", e.target.value)} placeholder="90" /></div>
         </div>
-        <div className="mk-form-row"><label>Data</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+        <div className="mk-form-row"><label>Data</label><DateField value={form.data} onChange={(v) => set("data", v)} /></div>
         {saldoInsuficiente && <div className="mk-preview" style={{ color: "#FF6B6B" }}>Saldo insuficiente em {origem.programa} para transferir {Number(form.pontos || 0).toLocaleString("pt-BR")} pontos.</div>}
         {form.pontos && <div className="mk-preview">Saem <b>{Number(form.pontos).toLocaleString("pt-BR")}</b> de {origem?.programa || "—"} e chegam <b>{pontosCreditados.toLocaleString("pt-BR")}</b> em {accounts.find((a) => a.id === form.destinoId)?.programa || "—"}.</div>}
         <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.origemId || !form.destinoId || !form.pontos || !form.data || saldoInsuficiente} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar transferência"}</button>
@@ -2425,14 +2523,14 @@ function CompraBonificadaFormModal({ initial, accounts, dependentes, onClose, on
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const pontosCalculados = Math.round(Number(form.valor || 0) * Number(form.multiplicador || 0));
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Compra Bonificada" : "Adicionar Compra Bonificada"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <p className="mk-field" style={{ marginTop: -6, marginBottom: 12 }}>Registre os detalhes da sua compra para rastrear os pontos</p>
         <div className="mk-form-row"><label>Conta</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
         <div className="mk-form-cols">
-          <div className="mk-form-row"><label>Data da Compra</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
-          <div className="mk-form-row"><label>Data Prevista Crédito</label><input type="date" value={form.dataPrevistaCredito} onChange={(e) => set("dataPrevistaCredito", e.target.value)} /></div>
+          <div className="mk-form-row"><label>Data da Compra</label><DateField value={form.data} onChange={(v) => set("data", v)} /></div>
+          <div className="mk-form-row"><label>Data Prevista Crédito</label><DateField value={form.dataPrevistaCredito} onChange={(v) => set("dataPrevistaCredito", v)} /></div>
         </div>
         <div className="mk-form-row"><label>Loja</label><input value={form.loja} onChange={(e) => set("loja", e.target.value)} placeholder="Ex: Ponto Frio" /></div>
         <div className="mk-form-cols">
@@ -2467,7 +2565,7 @@ function CompraDePontosFormModal({ initial, accounts, dependentes, onClose, onSa
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{initial ? "Editar Compra de Pontos" : "Nova Compra de Pontos"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Programa</label><select value={form.programaId} onChange={(e) => set("programaId", e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.programa} — saldo {Number(a.saldo || 0).toLocaleString("pt-BR")} ({ownerLabel(a.titularId, dependentes)})</option>)}</select></div>
@@ -2475,7 +2573,7 @@ function CompraDePontosFormModal({ initial, accounts, dependentes, onClose, onSa
           <div className="mk-form-row"><label>Pontos</label><input type="number" value={form.pontos} onChange={(e) => set("pontos", e.target.value)} placeholder="100000" /></div>
           <div className="mk-form-row"><label>Valor pago (R$)</label><input type="number" step="0.01" value={form.valorPago} onChange={(e) => set("valorPago", e.target.value)} /></div>
         </div>
-        <div className="mk-form-row"><label>Data</label><input type="date" value={form.data} onChange={(e) => set("data", e.target.value)} /></div>
+        <div className="mk-form-row"><label>Data</label><DateField value={form.data} onChange={(v) => set("data", v)} /></div>
         {form.pontos && <div className="mk-preview">Ao salvar, <b>{Number(form.pontos).toLocaleString("pt-BR")}</b> pontos são somados automaticamente ao saldo de {accounts.find((a) => a.id === form.programaId)?.programa || "—"}.</div>}
         <button className="mk-btn" style={{ width: "100%", justifyContent: "center", marginTop: 12 }} disabled={!form.programaId || !form.pontos} onClick={() => onSave(form)}>{initial ? "Salvar alterações" : "Salvar compra"}</button>
       </div>
@@ -2576,6 +2674,7 @@ function AdminAggregateDashboard({ clients }) {
   const clientesComObjetivos = clients.filter((c) => c.objetivos && c.objetivos.trim());
   const valorRecebidoPlanos = clients.reduce((sum, c) => sum + Number(c.plano_valor || 0), 0);
   const contratosPendentes = clients.filter((c) => !c.contrato_assinatura);
+  const contratosAssinados = clients.filter((c) => c.contrato_assinatura);
 
   return (
     <>
@@ -2640,6 +2739,25 @@ function AdminAggregateDashboard({ clients }) {
         <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Planos vencendo</div><div className="mk-stub-value">{vencendoPlanos.length || "—"}</div><div className="mk-stub-foot">{vencendoPlanos.length ? "nos próximos 30 dias" : "nenhum em breve"}</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><CalendarClock size={13} /> Vencimentos próximos</div><div className="mk-stub-value">{agg.vencimentos.length || "—"}</div><div className="mk-stub-foot">Assinaturas, milhas e pontos em até 6 meses</div></div>
         <div className="mk-stub"><div className="mk-stub-label"><PenTool size={13} /> Contratos pendentes</div><div className="mk-stub-value" style={{ color: contratosPendentes.length ? "#FFB020" : "var(--green)" }}>{contratosPendentes.length || "—"}</div><div className="mk-stub-foot">{contratosPendentes.length ? "clientes ainda não assinaram" : "todos assinaram"}</div></div>
+      </div>
+
+      <div className="mk-neon-grid" style={{ marginBottom: 22 }}>
+        <div className="mk-neon-card">
+          <div className="mk-neon-title"><PenTool size={13} /> Contrato — não assinaram ({contratosPendentes.length})</div>
+          <div className="mk-neon-body">
+            {contratosPendentes.length === 0 ? <div className="mk-neon-empty">Todos os clientes assinaram.</div> : contratosPendentes.map((c) => (
+              <div key={c.id} className="mk-field" style={{ color: "#FFB020", marginTop: 3 }}>{c.nome || c.email}</div>
+            ))}
+          </div>
+        </div>
+        <div className="mk-neon-card">
+          <div className="mk-neon-title"><CheckCircle2 size={13} /> Contrato — assinaram ({contratosAssinados.length})</div>
+          <div className="mk-neon-body">
+            {contratosAssinados.length === 0 ? <div className="mk-neon-empty">Nenhuma assinatura ainda.</div> : contratosAssinados.map((c) => (
+              <div key={c.id} className="mk-field" style={{ marginTop: 3 }}><b>{c.nome || c.email}</b>{c.contrato_assinado_em ? <> · {formatDateTime(c.contrato_assinado_em)}</> : null}</div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="mk-section-title"><h2>Vencimentos próximos — 6 meses</h2></div>
@@ -2790,7 +2908,7 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
   };
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()}>
         <h3>{isEdit ? "Editar cliente" : "Novo cliente"} <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>Nome</label><input value={form.nome} onChange={(e) => set("nome", e.target.value)} /></div>
@@ -2805,8 +2923,8 @@ function ClienteFormModal({ initial, onClose, onSaved }) {
           <div className="mk-form-row"><label>Parcelas</label><input type="number" min="1" step="1" value={form.planoParcelas} onChange={(e) => set("planoParcelas", e.target.value)} placeholder="1" /></div>
         </div>
         <div className="mk-form-cols">
-          <div className="mk-form-row"><label>Início do plano</label><input type="date" value={form.planoInicio} onChange={(e) => set("planoInicio", e.target.value)} /></div>
-          <div className="mk-form-row"><label>Fim do plano</label><input type="date" value={form.planoFim} onChange={(e) => set("planoFim", e.target.value)} /></div>
+          <div className="mk-form-row"><label>Início do plano</label><DateField value={form.planoInicio} onChange={(v) => set("planoInicio", v)} /></div>
+          <div className="mk-form-row"><label>Fim do plano</label><DateField value={form.planoFim} onChange={(v) => set("planoFim", v)} /></div>
         </div>
         <div className="mk-form-row"><label>Objetivos (observação interna, só o admin vê)</label><textarea rows="3" value={form.objetivos} onChange={(e) => set("objetivos", e.target.value)} placeholder="Ex.: foco em viagem internacional em família até dez/26..." /></div>
         {err && <div className="mk-preview" style={{ color: "#FF6B6B" }}>{err}</div>}
@@ -2833,7 +2951,7 @@ function ResetPasswordModal({ client, onClose }) {
   };
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
         <h3>Redefinir senha <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-field" style={{ marginBottom: 10 }}>Cliente: <b>{client.email}</b></div>
@@ -2895,7 +3013,7 @@ function ProfileSettingsModal({ currentEmail, onClose, onSaved }) {
   };
 
   return (
-    <div className="mk-modal-backdrop" onClick={onClose}>
+    <div className="mk-modal-backdrop">
       <div className="mk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
         <h3>Meu perfil <button className="mk-iconbtn" onClick={onClose}><X size={18} /></button></h3>
         <div className="mk-form-row"><label>E-mail de login</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
