@@ -557,7 +557,7 @@ const MILHAS_TABELA_BASE = {
   africa:      { latam: [65000, 45000, 75000], smiles: [75000, 55000, 95000],  azul: [75000, 50000, 100000] },
   asia:        { latam: [110000, 85000, 135000], smiles: [140000, 110000, 170000], azul: [125000, 95000, 155000] },
 };
-const FATOR_BRASIL2 = 1.5;
+const FATOR_BRASIL2 = 2.25;
 function milhasPorTrecho(regiao, cia) {
   const reg = regiao === "nacional" ? "brasil1" : regiao;
   const t = MILHAS_TABELA_BASE[reg === "brasil2" ? "brasil1" : reg]?.[cia];
@@ -577,11 +577,13 @@ function hojeLocalIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-// Viagem vencida = a data de volta (ou de ida, se não houver volta) já passou.
+// Viagem vencida = a data mais tardia entre ida e volta já passou.
 function viagemVencida(v, hoje) {
   if (!v || v.semData) return false;
-  const fim = v.dataVolta || v.dataIda || v.data;
-  return !!fim && fim < hoje;
+  const datas = [v.dataIda, v.dataVolta, v.data].filter(Boolean);
+  if (!datas.length) return false;
+  const fim = datas.reduce((a, b) => (a > b ? a : b));
+  return fim < hoje;
 }
 function totaisMilhasPorCia(viagens) {
   const out = {};
@@ -1028,11 +1030,11 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
   }, [db]);
 
   useEffect(() => {
-    if (!db || impersonating) return;
+    if (!db) return;
     const hoje = hojeLocalIso();
     if (!(db.proximasViagens || []).some((v) => viagemVencida(v, hoje))) return;
     setDb((prev) => ({ ...prev, proximasViagens: (prev.proximasViagens || []).filter((v) => !viagemVencida(v, hoje)) }));
-  }, [db, impersonating]);
+  }, [db]);
 
   const updateSlice = (key) => (updater) =>
     setDb((prev) => ({ ...prev, [key]: typeof updater === "function" ? updater(prev[key]) : updater }));
@@ -1424,7 +1426,7 @@ function PainelMilhas({ userId, userEmail, onSignOut, impersonating }) {
       return { ...prev, accounts: nextAccounts, compraDePontos: (prev.compraDePontos || []).filter((x) => x.id !== id) };
     });
   };
-  const tripsSorted = [...proximasViagens].sort((a, b) => {
+  const tripsSorted = proximasViagens.filter((v) => !viagemVencida(v, hojeLocalIso())).sort((a, b) => {
     if (a.semData && !b.semData) return 1;
     if (!a.semData && b.semData) return -1;
     return (a.dataIda || a.data || "9999-12-31").localeCompare(b.dataIda || b.data || "9999-12-31");
@@ -2289,7 +2291,8 @@ function TripFormModal({ initial, onClose, onSave }) {
     tipoViagem: initial?.tipoViagem || "idaVolta",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const canSave = form.destino && form.partida && form.regiao && (form.semData || form.dataIda);
+  const voltaAntesDaIda = !form.semData && form.dataIda && form.dataVolta && form.dataVolta < form.dataIda;
+  const canSave = form.destino && form.partida && form.regiao && (form.semData || form.dataIda) && !voltaAntesDaIda;
 
   return (
     <div className="mk-modal-backdrop">
@@ -2320,6 +2323,7 @@ function TripFormModal({ initial, onClose, onSave }) {
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
+        {voltaAntesDaIda && <div className="mk-preview" style={{ color: "#FF6B6B" }}>A data da volta está antes da data da ida. Corrija para salvar.</div>}
         <div className="mk-form-row"><label>Região do destino (para estimar as milhas)</label>
           <select value={form.regiao} onChange={(e) => set("regiao", e.target.value)}>
             <option value="">Selecione…</option>
